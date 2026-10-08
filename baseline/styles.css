@@ -2101,3 +2101,126 @@ body.layer-hide-track .baseline-track-path {
   overflow:hidden;
   text-overflow:ellipsis;
 }
+
+/* A map long-press creates a selection, not a saved waypoint or TEMP. */
+.map-selected-icon {
+  border:0!important;
+  background:transparent!important;
+  overflow:visible!important;
+}
+.map-selected-reticle {
+  position:absolute;
+  left:3px;
+  top:3px;
+  width:26px;
+  height:26px;
+  display:block;
+  border:2px solid #e5ff9d;
+  border-radius:50%;
+  background:rgba(1,11,4,.48);
+  box-shadow:0 0 0 2px rgba(0,0,0,.65),0 0 9px rgba(209,255,133,.6);
+  pointer-events:none;
+}
+.map-selected-reticle::before,
+.map-selected-reticle::after {
+  content:'';
+  position:absolute;
+  background:#e5ff9d;
+}
+.map-selected-reticle::before { width:36px;height:1px;top:11px;left:-7px; }
+.map-selected-reticle::after { width:1px;height:36px;left:11px;top:-7px; }
+.map-selected-reticle i {
+  position:absolute;
+  z-index:1;
+  left:9px;
+  top:9px;
+  width:4px;
+  height:4px;
+  border-radius:50%;
+  background:#e5ff9d;
+}
+.map-selected-caption {
+  position:absolute;
+  display:block;
+  bottom:38px;
+  left:50%;
+  transform:translateX(-50%);
+  width:max-content;
+  padding:2px 5px;
+  border:1px solid rgba(229,255,157,.7);
+  background:rgba(2,12,4,.94);
+  color:#e5ff9d;
+  font:800 10px var(--font-ui);
+  line-height:1.2;
+  white-space:nowrap;
+  pointer-events:none;
+}
+
+/* Full panel typography audit: preserve meaning instead of clipping labels. */
+.sheet-body,
+.sheet-body > *,
+.site-detail,
+.point-picker,
+.site-list,
+.plan-library { min-width:0; }
+.sheet .site-detail-head strong,
+.sheet .site-detail-head small,
+.sheet .site-copy,
+.sheet .sheet-note,
+.sheet .explore-foot,
+.sheet .record-detail,
+.sheet .record-row span {
+  overflow-wrap:anywhere;
+  word-break:keep-all;
+}
+.site-row { grid-template-columns:minmax(0,1fr) auto; }
+.site-row strong {
+  min-width:0;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+  word-break:keep-all;
+  line-height:1.35;
+}
+.site-row small, .site-row em {
+  min-width:0;
+  word-break:keep-all;
+  overflow-wrap:anywhere;
+}
+.site-add-source button, .point-picker-grid button { min-width:0; }
+.site-add-source span, .point-picker-grid span {
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  word-break:normal;
+  overflow-wrap:anywhere;
+}
+.site-add-source strong,.point-picker-grid button {
+  word-break:keep-all;
+}
+.plan-library-row .plan-open strong,
+.plan-library-row .plan-open span,
+.plan-current span {
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+  word-break:keep-all;
+}
+.site-placement-bar strong {
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  overflow-wrap:anywhere;
+  line-height:1.25;
+}
+.site-filter, .site-add-search button, .point-picker-address button,
+.point-picker-coord button,.point-picker-site button,
+.map-mode-options button, .lite-pack-btn, .record-actions button,
+.plan-library-actions button, .plan-library-row > button:not(.plan-open),
+.site-placement-bar button {
+  min-width:0;
+  word-break:keep-all;
+}
+.lite-pack-btn { padding:8px; line-height:1.35; overflow-wrap:break-word; }
