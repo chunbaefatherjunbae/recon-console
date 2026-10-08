@@ -73,7 +73,17 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#reticleCoord').count(), 1);
       const bodyText = await page.locator('body').textContent();
       assert.equal(bodyText.includes('\\n'), false, 'escaped newline text must never render');
-      assert.equal(await page.locator('.map-tech-grid').evaluate(el => getComputedStyle(el).opacity), '0.72');
+      assert.equal(await page.locator('.map-tech-grid').evaluate(el => getComputedStyle(el).opacity), '0.48');
+      const gridAlignment=await page.locator('.map-tech-grid').evaluate(el=>getComputedStyle(el).backgroundPosition);
+      assert(gridAlignment.includes('50% 50%'),'grid lines must align to the central map reticle');
+      const hudShade=await page.locator('.position-hud').evaluate(el=>{
+        const before=getComputedStyle(el,'::before'),line=getComputedStyle(el,'::after');
+        return {shadeHeight:parseFloat(before.height),lineHeight:parseFloat(line.height),
+          shadeTop:parseFloat(before.top),lineTop:parseFloat(line.top)};
+      });
+      assert(Math.abs(hudShade.shadeHeight-hudShade.lineHeight)<1 &&
+        Math.abs(hudShade.shadeTop-hudShade.lineTop)<1,
+        'upper POS background and vertical accent line must share identical vertical bounds');
       assert.equal(await page.locator('.position-hud').evaluate(el => getComputedStyle(el,'::before').backgroundColor), 'rgba(0, 8, 3, 0.21)');
       assert.equal(await page.locator('.position-hud').evaluate(el => getComputedStyle(el,'::after').content !== 'none'), true);
       assert.equal(await page.locator('.reticle').evaluate(el => getComputedStyle(el,'::before').content !== 'none'), true);
