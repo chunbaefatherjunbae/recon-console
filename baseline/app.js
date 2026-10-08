@@ -33,6 +33,8 @@
     center: DEFAULT_CENTER,
     zoom: 12,
     zoomControl: false,
+    doubleClickZoom: true,
+    fadeAnimation: false,
     attributionControl: true,
     preferCanvas: true
   });
@@ -41,6 +43,7 @@
     maxNativeZoom: 17,
     maxZoom: 19,
     className: 'baseline-topo-tiles',
+    keepBuffer: 3,
     attribution: 'Map data © OpenStreetMap contributors · Map style © OpenTopoMap'
   }).addTo(map);
 
@@ -263,9 +266,10 @@
       if (!tempMarker) {
         tempMarker = L.marker([temp.lat, temp.lon], {
           icon: makeDot('temp'),
-          interactive: false,
+          interactive: true,
           zIndexOffset: 300
         }).addTo(map);
+        tempMarker.on('click', openTempDetail);
       } else {
         tempMarker.setLatLng([temp.lat, temp.lon]);
       }
@@ -450,6 +454,61 @@
     toast('TEMP로 이동');
   }
 
+  function openTempDetail() {
+    const temp = S.state.temp;
+    if (!temp) {
+      toast('임시위치 없음');
+      return;
+    }
+    const lat = Number(temp.lat);
+    const lon = Number(temp.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const point = { lat, lon };
+    const coords = lat.toFixed(6) + ', ' + lon.toFixed(6);
+    const html =
+      '<div class="site-detail">' +
+        '<div class="site-detail-head"><small>TEMP · 저장된 임시 좌표</small><strong>임시위치</strong></div>' +
+        '<div class="site-detail-grid">' +
+          '<span>MGRS</span><strong>' + esc(formatMgrs(point)) + '</strong>' +
+          '<span>WGS84</span><strong>' + esc(coords) + '</strong>' +
+          '<span>지정</span><strong>' + esc(ageLabel(temp.at) || '저장됨') + '</strong>' +
+        '</div>' +
+        '<div class="site-actions">' +
+          '<button class="primary site-destination-action" type="button" id="tempMapGo">지도에서 보기</button>' +
+          '<div class="site-actions-secondary">' +
+            '<button type="button" id="tempCopyCoord">좌표 복사</button>' +
+            '<button type="button" id="tempMoveReticle">조준점으로 재지정</button>' +
+          '</div>' +
+          '<div class="site-actions-manage"><button class="danger" type="button" id="tempClear">임시위치 삭제</button></div>' +
+        '</div>' +
+      '</div>';
+
+    openSheet('temp', { title: '임시위치', html });
+    $('tempMapGo')?.addEventListener('click', () => {
+      if (S.state.gps.follow) S.setFollow(false);
+      map.setView([lat, lon], Math.max(map.getZoom(), 15), { animate: false });
+      closeSheet();
+    });
+    $('tempCopyCoord')?.addEventListener('click', async () => {
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+        await navigator.clipboard.writeText(formatMgrs(point));
+        toast('임시위치 MGRS 복사');
+      } catch {
+        toast('좌표 복사 불가');
+      }
+    });
+    $('tempMoveReticle')?.addEventListener('click', () => {
+      closeSheet();
+      setTempAtReticle();
+    });
+    $('tempClear')?.addEventListener('click', () => {
+      S.clearTemp();
+      closeSheet();
+      toast('임시위치 삭제');
+    });
+  }
+
   function bindTempGesture() {
     const btn = $('tempBtn');
     if (!btn) return;
@@ -467,7 +526,10 @@
 
     const finish = () => {
       clearTimeout(tempHoldTimer);
-      if (!tempHoldTriggered) setTempAtReticle();
+      if (!tempHoldTriggered) {
+        if (S.state.temp) openTempDetail();
+        else setTempAtReticle();
+      }
       tempHoldTriggered = false;
     };
 
