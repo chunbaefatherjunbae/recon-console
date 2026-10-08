@@ -37,6 +37,7 @@ for(const match of shell[1].matchAll(/'([^']+)'/g)){
   assert(fs.existsSync(path.resolve(root,'baseline',match[1])), 'Broken precache: '+match[1]);
 }
 assert(sw.includes("scope") || sw.includes("self.location.href"));
+assert(sw.includes('if(cached) return cached;'),'Cached tiles must be served without a repeat network request');
 const lite=fs.readFileSync(path.join(root,'baseline/data/lite-map-osm.js'),'utf8');
 assert(lite.length>2000000,'LITE dataset incomplete');
 assert(lite.startsWith('window.BaselineLiteOSM='));

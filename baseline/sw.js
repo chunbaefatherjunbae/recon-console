@@ -258,18 +258,10 @@ self.addEventListener('fetch',event=>{
     event.respondWith((async()=>{
       const cache=await caches.open(ONLINE_TILE_CACHE);
       const cached=await cache.match(req);
-      if(cached){
-        event.waitUntil((async()=>{
-          try{
-            const fresh=await fetch(req);
-            if(fresh.ok||fresh.type==='opaque'){
-              await cache.put(req,fresh.clone());
-              await trimCache(ONLINE_TILE_CACHE,ONLINE_TILE_LIMIT);
-            }
-          }catch{}
-        })());
-        return cached;
-      }
+      // Offline-first: revisiting a cached area must not trigger another
+      // tile request just because the user pans back across it.
+      // The cache is bounded and refreshed when its version is rotated.
+      if(cached) return cached;
       try{
         const res=await fetch(req);
         if(res.ok||res.type==='opaque'){

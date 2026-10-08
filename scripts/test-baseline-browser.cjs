@@ -63,6 +63,7 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.evaluate(() => BaselineApp.roadBoostLayer?._url.includes('openstreetmap.org')), true);
       assert.equal(await page.evaluate(() => BaselineApp.map.hasLayer(BaselineApp.roadBoostLayer)), true, 'subtle facility/road label overlay must stay available online');
       assert.equal(await page.evaluate(() => BaselineApp.roadBoostLayer.options.opacity), 0.17);
+      assert.equal(await page.evaluate(() => BaselineApp.roadBoostLayer.options.minZoom), 15, 'extra road tiles must be deferred until detail zoom');
       assert.equal(await page.locator('#tempBtn').evaluate(el => getComputedStyle(el).touchAction), 'manipulation');
       assert(parseFloat(await page.locator('.bottom-nav button').first().evaluate(el => getComputedStyle(el).fontSize)) >= 14);
       assert(parseFloat(await page.locator('#positionCoord').evaluate(el => getComputedStyle(el).fontSize)) >= 13);

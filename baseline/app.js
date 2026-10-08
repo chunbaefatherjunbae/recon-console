@@ -49,7 +49,9 @@
   map.getPane('roadBoostPane').style.pointerEvents = 'none';
 
   const roadBoostLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    minZoom: 10,
+    // Only load the second raster layer when detailed road labels matter.
+    // Leaflet keeps the layer registered but requests no tiles below minZoom.
+    minZoom: 15,
     maxZoom: 19,
     opacity: 0.17,
     pane: 'roadBoostPane',
@@ -1218,8 +1220,7 @@
 
   let reticleHudFrame=0;
   map.on('move zoom resize', () => {
-    renderScale();
-    if (sitePlacementActive) updateSitePlacementBar();
+    if(sitePlacementActive) updateSitePlacementBar();
     if(!reticleHudFrame){
       reticleHudFrame=requestAnimationFrame(()=>{
         reticleHudFrame=0;
@@ -1227,6 +1228,9 @@
       });
     }
   });
+  // Scale varies negligibly during a drag. Avoid costly distance/DOM updates
+  // on every pointer move, but keep scale correct after navigation settles.
+  map.on('moveend zoomend resize', renderScale);
   map.on('dragstart', () => {
     if (S.state.gps.follow) {
       S.setFollow(false);
