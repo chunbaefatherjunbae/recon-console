@@ -181,7 +181,7 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#sheetTitle').textContent(),'임시위치',
         'tapping TEMP marker must still open its information card');
       // All modal sheets close when the exposed map is tapped.
-      await page.locator('#map').click({position:{x:85,y:410}});
+      await page.locator('#map').click({position:{x:85,y:275}});
       assert.equal(await page.locator('#sheet').isHidden(),true,'map tap must close open sheet');
 
       // A held finger must use its map pixel, not the reticle/center position.
