@@ -215,10 +215,20 @@ const server = http.createServer((req, res) => {
 
       // Mobile taps slightly slower than Leaflet's native 200 ms pair
       // must still zoom once, and only once.
+      const freeTapPoint=await page.evaluate(() => {
+        const box=BaselineApp.map.getContainer().getBoundingClientRect();
+        const positions=[[.7,.48],[.25,.66],[.72,.72],[.3,.31]];
+        for(const [fx,fy] of positions){
+          const x=box.left+box.width*fx,y=box.top+box.height*fy;
+          const hit=document.elementFromPoint(x,y);
+          if(hit && !hit.closest('.leaflet-marker-icon,.leaflet-control,button,a,.sheet'))return {x,y};
+        }
+        throw new Error('No map-only point for double-tap test');
+      });
       const beforeDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
-      await page.touchscreen.tap(mapTouch.x,mapTouch.y);
+      await page.touchscreen.tap(freeTapPoint.x,freeTapPoint.y);
       await page.waitForTimeout(250);
-      await page.touchscreen.tap(mapTouch.x,mapTouch.y);
+      await page.touchscreen.tap(freeTapPoint.x,freeTapPoint.y);
       await page.waitForTimeout(280);
       const afterDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
       assert.equal(afterDoubleTapZoom,beforeDoubleTapZoom+1,'double tap must zoom exactly one step');

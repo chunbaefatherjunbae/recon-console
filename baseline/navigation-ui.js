@@ -58,7 +58,7 @@
     if (!ref) return null;
     return Plans.point({
       role,
-      name: ref.type === 'GPS' ? '현위치' : ref.type === 'TEMP' ? '임시위치' : '마지막위치',
+      name: ref.type === 'GPS' ? '현위치' : ref.type === 'TEMP' ? '임시위치' : '마지막 위치',
       coords:[Number(ref.lat),Number(ref.lon)],
       source:String(ref.type),
       capturedAt:Number(ref.at) || Date.now()
@@ -72,7 +72,7 @@
     if (!raw) return null;
     return Plans.point({
       role,
-      name:source === 'TEMP' ? '임시위치' : '마지막위치',
+      name:source === 'TEMP' ? '임시위치' : '마지막 위치',
       coords:[Number(raw.lat),Number(raw.lon)],
       source,
       capturedAt:Number(raw.at) || Date.now()
@@ -499,14 +499,14 @@
     ).join('');
 
     const random = role === 'DEST'
-      ? '<div class="point-picker-random"><button type="button" id="pointRandomRegistered">무작위 등록</button><button type="button" id="pointRandomWild">무작위 미개척</button></div>'
+      ? '<div class="point-picker-random"><button type="button" id="pointRandomRegistered">등록 거점 추첨</button><button type="button" id="pointRandomWild">무작위 좌표</button></div>'
       : '';
 
     return '<div class="point-picker">' +
       '<div class="point-picker-grid">' +
-        '<button type="button" data-point-source="CURRENT" ' + (current ? '' : 'disabled') + '>현재 기준<span>' + esc(current?.name || '없음') + '</span></button>' +
+        '<button type="button" data-point-source="CURRENT" ' + (current ? '' : 'disabled') + '>기준 위치<span>' + esc(current?.name || '없음') + '</span></button>' +
         '<button type="button" data-point-source="TEMP" ' + (temp ? '' : 'disabled') + '>임시위치<span>' + (temp ? formatMgrs(temp.coords) : '없음') + '</span></button>' +
-        '<button type="button" data-point-source="LAST" ' + (last ? '' : 'disabled') + '>마지막위치<span>' + (last ? formatMgrs(last.coords) : '없음') + '</span></button>' +
+        '<button type="button" data-point-source="LAST" ' + (last ? '' : 'disabled') + '>마지막 위치<span>' + (last ? formatMgrs(last.coords) : '없음') + '</span></button>' +
         '<button type="button" data-point-source="MAP">지도 조준점<span>' + formatMgrs(reticlePoint(role).coords) + '</span></button>' +
       '</div>' +
       '<div class="point-picker-address"><input id="pointAddressInput" type="search" autocomplete="street-address" placeholder="주소 검색 (온라인)"><button type="button" id="pointAddressSearch">검색</button></div>' +
@@ -892,7 +892,7 @@
         '</div>' +
         '<div class="record-laps">' + laps + '</div>' +
         '<div class="record-actions">' +
-          '<button class="record-map-btn" id="recordMapView" type="button">지도에서 보기</button>' +
+          '<button class="record-map-btn" id="recordMapView" type="button">지도 보기</button>' +
           '<button class="record-delete-btn" id="recordDeleteBtn" type="button">삭제</button>' +
         '</div>' +
       '</div>'
