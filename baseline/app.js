@@ -892,7 +892,7 @@
       '<label><span>거점명</span><input id="siteFormName" maxlength="80" value="' + esc(existing?.name || '') + '" placeholder="거점 이름"></label>' +
       '<label><span>분류</span><input id="siteFormCat" maxlength="40" value="' + esc(existing?.cat || '사용자 거점') + '" placeholder="분류"></label>' +
       '<label><span>메모</span><textarea id="siteFormMemo" maxlength="800" placeholder="메모">' + esc(existing?.desc || '') + '</textarea></label>' +
-      '<div class="site-form-actions"><button type="button" id="siteFormRelocate">위치 다시 지정</button><button class="primary" type="button" id="siteFormSave">저장</button></div>' +
+      '<div class="site-form-actions"><button type="button" id="siteFormRelocate">위치 변경</button><button class="primary" type="button" id="siteFormSave">저장</button></div>' +
       '</div>';
     openSheet('sites', {title:existing ? '거점 수정' : '거점 등록', html});
     $('siteFormRelocate')?.addEventListener('click', () => {
@@ -1223,6 +1223,7 @@
       '<button class="lite-pack-btn" id="litePackBtn" type="button" ' + (['PREPARING','CORE_PREPARING'].includes(lite.packStatus)?'disabled':'') + '>' + esc(packLabel) + '</button>' +
       '<p class="sheet-note">AUTO는 온라인 → 이미 본 지도 캐시 → 경량지도 순서로 전환합니다. 경량지도는 실제 OSM 선형 데이터와 DEM 지형을 사용합니다.</p>' +
       '<p class="sheet-note">저배율 전국 지형은 온라인 사용 중 자동 준비됩니다. 출발 전 ‘상세 지형 준비’를 완료하면 확대 시에도 더 선명한 지형을 오프라인에서 유지합니다.</p>' +
+      '<p class="sheet-note">지도 조작: 두 번 탭 확대 · 길게 누르기 위치 정보.</p>' +
       '<p class="sheet-note">디스플레이 테마는 NVG-G로 고정. 테마 선택은 전체 배치 확정 뒤 추가.</p>' +
     '</div>';
   }
