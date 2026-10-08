@@ -491,7 +491,7 @@ const server = http.createServer((req, res) => {
       await page.evaluate(() => BaselineLiteMap.setMode('lite'));
       const offlineShell = await page.evaluate(async () => {
         const names=await caches.keys();
-        const shellName=names.find(name => /^baseline-shell-v\d+$/.test(name) || /^baseline-offline-v\d+-shell$/.test(name));
+        const shellName=names.find(name => /^recon-console-baseline-shell-v\d+$/.test(name));
         if(!shellName)return {shell:false,index:false,app:false};
         const cache=await caches.open(shellName);
         return {
