@@ -695,6 +695,7 @@
         if (!imported) throw new Error('invalid');
         planViewActive=true;
         draft=imported;
+        drawUndoHistory=[];
         renderPlanMap();
         renderHud();
         openEditor();
