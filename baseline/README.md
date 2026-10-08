@@ -1,6 +1,6 @@
 # RECON CONSOLE // BASELINE
 
-BASELINE is the clean rebuild track for RECON CONSOLE.
+BASELINE is the active rebuild project for the RECON CONSOLE application.
 
 ## Rule
 
@@ -10,7 +10,7 @@ Neutral dependencies reused:
 - Leaflet
 - MGRS library
 
-BASELINE has its own isolated service worker at `./baseline/sw.js`. It only owns the `/baseline/` scope, precaches the BASELINE shell, caches viewed online map tiles, and owns the dedicated lightweight terrain cache. It never rewrites HTML.
+BASELINE has its own isolated service worker at `/baseline/sw.js`. It only owns the `/baseline/` scope, precaches the BASELINE shell, caches viewed online map tiles, and owns the dedicated lightweight terrain cache. It never rewrites HTML.
 
 ## Current model
 

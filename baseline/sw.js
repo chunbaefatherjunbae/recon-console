@@ -1,8 +1,8 @@
 'use strict';
 
-const SHELL_CACHE='baseline-shell-v7';
-const TERRAIN_CACHE='baseline-terrain-v1';
-const ONLINE_TILE_CACHE='baseline-online-tiles-v1';
+const SHELL_CACHE='recon-console-baseline-shell-v1';
+const TERRAIN_CACHE='recon-console-baseline-terrain-v1';
+const ONLINE_TILE_CACHE='recon-console-baseline-online-tiles-v1';
 const ONLINE_TILE_LIMIT=384;
 const BASE=new URL('./',self.location.href);
 const local=path=>new URL(path,BASE).href;
@@ -13,6 +13,9 @@ const LITE_DATA_URL=local('./data/lite-map-osm.js');
 const SHELL=[
   './',
   './index.html',
+  './manifest.json',
+  '../icons/icon-192.png',
+  '../icons/icon-512.png',
   './styles.css',
   './state.js',
   './site-store.js',
@@ -25,9 +28,6 @@ const SHELL=[
   './lite-map.js',
   './navigation-ui.js',
   './data/sites.js',
-  './manifest.webmanifest',
-  '../icons/icon-192.png',
-  '../icons/icon-512.png',
   '../vendor/leaflet-1.9.4.css',
   '../vendor/leaflet-1.9.4.js',
   '../vendor/mgrs-1.0.0.js'
@@ -200,7 +200,7 @@ self.addEventListener('activate',event=>{
     const names=await caches.keys();
     await Promise.all(names.filter(name => {
       if(keep.has(name)) return false;
-      return name.startsWith('baseline-shell-') || name.startsWith('baseline-offline-');
+      return name.startsWith('recon-console-baseline-shell-') || name.startsWith('recon-console-baseline-offline-');
     }).map(name=>caches.delete(name)));
     await self.clients.claim();
   })());
@@ -233,7 +233,7 @@ self.addEventListener('fetch',event=>{
   const url=new URL(req.url);
 
   if(url.origin===self.location.origin){
-    if(url.pathname.includes('/baseline/')||url.pathname.includes('/vendor/')){
+    if(url.pathname.includes('/baseline/')||url.pathname.includes('/vendor/')||url.pathname.includes('/icons/')){
       event.respondWith((async()=>{
         const cache=await caches.open(SHELL_CACHE);
         try{

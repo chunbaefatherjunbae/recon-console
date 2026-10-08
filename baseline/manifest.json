@@ -1,0 +1,26 @@
+{
+  "name": "RECON CONSOLE",
+  "short_name": "RECON CONSOLE",
+  "description": "BASELINE project for RECON CONSOLE. Reconnaissance mapping, coordinates, navigation and records.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020904",
+  "theme_color": "#020904",
+  "lang": "ko",
+  "icons": [
+    {
+      "src": "../icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "../icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

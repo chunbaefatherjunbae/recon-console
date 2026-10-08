@@ -17,38 +17,24 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify deployable files
+      - name: Check JavaScript syntax
         run: |
-          test -s index.html
-          test -s baseline/index.html
-          test -s baseline/manifest.webmanifest
-          test -s baseline/data/lite-map-osm.js
-          test -s icons/icon-192.png
-          test -s icons/icon-512.png
-          test -s vendor/leaflet-1.9.4.js
-          test -s vendor/leaflet-1.9.4.css
-          test -s vendor/mgrs-1.0.0.js
-          grep -q 'RECON CONSOLE // BASELINE' baseline/index.html
-          node -e 'const m=JSON.parse(require("fs").readFileSync("baseline/manifest.webmanifest","utf8"));if(m.name!=="RECON CONSOLE"||m.scope!=="./")process.exit(1)'
-          for file in baseline/*.js baseline/data/*.js vendor/*.js scripts/*.cjs; do node --check "$file"; done
-      - name: Install browser test dependency
-        run: npm install --no-save --package-lock=false playwright@1.56.1
-      - name: Install test browsers
-        run: npx playwright install --with-deps chromium webkit
-      - name: Test BASELINE on Chromium and WebKit
+          for file in baseline/*.js baseline/data/*.js vendor/*.js scripts/*.cjs; do
+            node --check "$file"
+          done
+      - name: Check standalone assets and branding
+        run: node scripts/verify-deployment.cjs
+      - name: Install browser test dependencies
+        run: |
+          npm install --no-save --package-lock=false playwright@1.56.1
+          npx playwright install --with-deps chromium webkit
+      - name: Run Chromium and WebKit regression
         run: node scripts/test-baseline-browser.cjs
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: baseline-browser-debug
-          path: ui-results-baseline/
-
   deploy:
     needs: verify
     runs-on: ubuntu-latest
@@ -57,12 +43,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v6
-      - name: Configure Pages
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload static site
         uses: actions/upload-pages-artifact@v4
         with:
           path: .
-      - name: Deploy to GitHub Pages
+      - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
