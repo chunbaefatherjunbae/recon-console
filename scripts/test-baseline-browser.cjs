@@ -171,6 +171,58 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#sheetTitle').textContent(), '임시위치', 'TEMP control must open saved position card');
       await page.locator('#sheetClose').click();
 
+      // A held finger must use its map pixel, not the reticle/center position.
+      const mapTouch = await page.evaluate(() => {
+        const box=BaselineApp.map.getContainer().getBoundingClientRect();
+        const x=box.left+box.width*.43,y=box.top+box.height*.43;
+        const point=BaselineApp.map.containerPointToLatLng([x-box.left,y-box.top]);
+        return {x,y,lat:point.lat,lon:point.lng};
+      });
+      await page.locator('#map').dispatchEvent('pointerdown',{
+        pointerId:771,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x,clientY:mapTouch.y
+      });
+      await page.waitForTimeout(720);
+      assert.equal(await page.locator('#sheetTitle').textContent(), '위치 정보', 'map press must open coordinate card');
+      const cardCoord = await page.locator('.site-detail-grid').textContent();
+      assert(cardCoord.includes(mapTouch.lat.toFixed(6)));
+      assert(cardCoord.includes(mapTouch.lon.toFixed(6)));
+      assert.equal(await page.locator('#mapPointTemp').count(), 1);
+      assert.equal(await page.locator('#mapPointCenter').count(), 1);
+      assert.equal(await page.locator('#mapPointCopy').count(), 1);
+      await page.locator('#mapPointTemp').click();
+      assert.equal(await page.locator('#sheet').isHidden(), true);
+      const pinned=await page.evaluate(() => BaselineState.state.temp);
+      assert(Math.abs(pinned.lat-mapTouch.lat)<0.000002 && Math.abs(pinned.lon-mapTouch.lon)<0.000002);
+      await page.locator('#map').dispatchEvent('pointerup',{
+        pointerId:771,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x,clientY:mapTouch.y
+      });
+      await page.locator('#map').dispatchEvent('pointerdown',{
+        pointerId:772,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x,clientY:mapTouch.y
+      });
+      await page.locator('#map').dispatchEvent('pointermove',{
+        pointerId:772,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x+45,clientY:mapTouch.y
+      });
+      await page.waitForTimeout(690);
+      assert.equal(await page.locator('#sheet').isHidden(), true, 'drag must cancel map long press');
+      await page.locator('#map').dispatchEvent('pointerup',{
+        pointerId:772,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x+45,clientY:mapTouch.y
+      });
+
+      // Mobile taps slightly slower than Leaflet's native 200 ms pair
+      // must still zoom once, and only once.
+      const beforeDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
+      await page.touchscreen.tap(mapTouch.x,mapTouch.y);
+      await page.waitForTimeout(250);
+      await page.touchscreen.tap(mapTouch.x,mapTouch.y);
+      await page.waitForTimeout(280);
+      const afterDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
+      assert.equal(afterDoubleTapZoom,beforeDoubleTapZoom+1,'double tap must zoom exactly one step');
+
       await page.evaluate(() => {
         const t = BaselineState.state.temp;
         BaselineState.setLastFix({ lat: t.lat + 0.01, lon: t.lon + 0.01, at: Date.now() + 5000 });
@@ -223,7 +275,7 @@ const server = http.createServer((req, res) => {
       assert(await page.locator('#siteMapGo').isVisible());
       assert.equal(await page.locator('#siteSecureToggle').textContent(), '개척 완료');
       await page.locator('#siteSecureToggle').click();
-      assert.equal(await page.locator('#siteSecureToggle').textContent(), '미개척으로');
+      assert.equal(await page.locator('#siteSecureToggle').textContent(), '개척 취소');
       assert.equal(await page.evaluate(() => BaselineSites.getSecured().length), 1);
       await page.locator('#sheetClose').click();
 
@@ -237,6 +289,19 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('[data-explore-radius]').count(), 4);
       assert.equal(await page.locator('#exploreRegisteredBtn').count(), 1);
       assert.equal(await page.locator('#exploreWildBtn').count(), 1);
+      // Both random registered and new random-coordinate discoveries move
+      // the underlying map before opening the information sheet.
+      await page.locator('[data-explore-radius="all"]').click();
+      await page.locator('#exploreRegisteredBtn').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(), '거점 정보');
+      const registeredFocus=await page.evaluate(() => {
+        const center=BaselineApp.map.getCenter();
+        return BaselineSites.getRegistered().some(site=>
+          Math.abs(site.coords[0]-center.lat)<0.00002 && Math.abs(site.coords[1]-center.lng)<0.00002);
+      });
+      assert.equal(registeredFocus,true,'registered lottery must center its selected site');
+      await page.locator('#sheetClose').click();
+      await page.locator('.bottom-nav button[data-panel="explore"]').click();
       await page.locator('[data-explore-radius="30"]').click();
       assert(await page.locator('[data-explore-radius="30"]').evaluate(el => el.classList.contains('active')));
       await page.evaluate(() => BaselineState.setTemp({lat:37.4267,lon:127.0544}));
@@ -248,6 +313,12 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('.site-detail-grid').textContent().then(t => t.includes('미개척')), true);
       assert.equal(await page.evaluate(() => BaselineSites.getUserSites().length), beforeWild + 1);
       assert.equal(await page.locator('.site-map-marker-wrap').count(), 25);
+      const wildFocus=await page.evaluate(() => {
+        const site=BaselineSites.getUserSites()[0];
+        const center=BaselineApp.map.getCenter();
+        return Math.abs(site.coords[0]-center.lat)<0.00002 && Math.abs(site.coords[1]-center.lng)<0.00002;
+      });
+      assert.equal(wildFocus,true,'generated random coordinates must recenter map');
       await page.locator('#sheetClose').click();
 
       await page.locator('.bottom-nav button[data-panel="sites"]').click();
@@ -549,6 +620,27 @@ const server = http.createServer((req, res) => {
         const hud = await page.locator('.position-hud').boundingBox();
         assert(quick.x >= 0 && quick.x + quick.width <= width + 1);
         assert(hud.x >= 0 && hud.x + hud.width <= width + 1);
+        await page.locator('.bottom-nav button[data-panel="sites"]').click();
+        await page.locator('.site-row').first().click();
+        const actionLayout=await page.evaluate(() => {
+          const box=id=>document.getElementById(id).getBoundingClientRect();
+          const top=box('siteDestinationSet'),left=box('siteMapGo'),right=box('siteSecureToggle');
+          return {
+            top:{width:top.width,y:top.y,bottom:top.bottom},
+            left:{width:left.width,y:left.y,bottom:left.bottom},
+            right:{width:right.width,y:right.y,bottom:right.bottom},
+            labels:['siteDestinationSet','siteMapGo','siteSecureToggle'].map(id=>{
+              const el=document.getElementById(id);
+              return {nowrap:getComputedStyle(el).whiteSpace==='nowrap',overflow:el.scrollWidth>el.clientWidth+1};
+            })
+          };
+        });
+        assert(actionLayout.top.width > actionLayout.left.width*1.8,'primary action must occupy full row');
+        assert(actionLayout.left.y >= actionLayout.top.bottom,'secondary actions must be below primary');
+        assert(Math.abs(actionLayout.left.y-actionLayout.right.y) < 2,'secondary actions must align');
+        assert(actionLayout.labels.every(x=>x.nowrap && !x.overflow),'action labels must fit on one line');
+        await page.screenshot({ path:`ui-results-baseline/${name}-site-actions-${width}.png`, fullPage:true });
+        await page.locator('#sheetClose').click();
         await page.screenshot({ path:`ui-results-baseline/${name}-${width}.png`, fullPage:true });
       }
 
