@@ -2087,3 +2087,17 @@ body.layer-hide-track .baseline-track-path {
 .explore-actions button { min-width:0; line-height:1.3; }
 .explore-actions button span { word-break:keep-all; overflow-wrap:break-word; }
 .site-detail-grid > * { min-width:0; }
+
+/* Fixed-size operating controls: do not split Korean action words. */
+.site-form-actions button,
+.plan-editor-actions button,
+.point-picker-random button,
+.nav-session-controls button,
+.drawing-controls button {
+  min-width:0;
+  padding-inline:5px;
+  white-space:nowrap;
+  word-break:keep-all;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
