@@ -555,7 +555,7 @@
         '<div class="site-actions">' +
           '<button class="primary site-destination-action" type="button" id="mapPointTemp">임시위치 지정</button>' +
           '<div class="site-actions-secondary">' +
-            '<button type="button" id="mapPointCenter">지도 이동</button>' +
+            '<button type="button" id="mapPointCenter">조준점 이동</button>' +
             '<button type="button" id="mapPointCopy">좌표 복사</button>' +
           '</div>' +
           '<div class="site-actions-manage">' +
