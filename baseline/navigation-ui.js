@@ -518,6 +518,13 @@
     '</div>';
   }
 
+  function focusRandomDestination(site) {
+    const lat=Number(site?.coords?.[0]), lon=Number(site?.coords?.[1]);
+    if(!Number.isFinite(lat) || !Number.isFinite(lon))return;
+    if(S.state.gps.follow)S.setFollow(false);
+    map.setView([lat,lon],Math.max(14,map.getZoom()),{animate:false});
+  }
+
   function openPointPicker(role,index = null) {
     App.openSheet('plans',{title:(role === 'START' ? '출발지' : role === 'DEST' ? '목적지' : '경유지') + ' 선택',html:pointPickerHtml(role,index)});
 
@@ -599,6 +606,7 @@
       const pool = Sites.getRegistered().filter(site => site.status !== 'SECURED');
       const site = Explore.randomRegistered(pool,'all',null);
       if (!site) return toast('등록 거점 없음');
+      focusRandomDestination(site);
       setPoint(role,index,sitePoint(site,role));
     });
 
@@ -606,6 +614,7 @@
       const wild = Explore.randomWild('all',null);
       const saved = wild ? Sites.addUserSite(wild) : null;
       if (!saved) return toast('미개척 생성 실패');
+      focusRandomDestination(saved);
       setPoint(role,index,sitePoint(saved,role));
     });
 
