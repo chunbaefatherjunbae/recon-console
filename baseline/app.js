@@ -20,6 +20,7 @@
   let tempHoldTriggered = false;
   let tempMarker = null;
   let selectedMapMarker = null;
+  let suppressMapTapCloseUntil = 0;
   let gpsMarker = null;
   let lastMarker = null;
   let activeSiteFilter = 'registered';
@@ -619,6 +620,7 @@
         if (!active || !isFreeMap()) return;
         const location=map.containerPointToLatLng([active.p.x,active.p.y]);
         recentHoldAt=Date.now();
+        suppressMapTapCloseUntil=recentHoldAt+850;
         active.long=true;
         lastTap=null;
         openMapPointCard(location);
@@ -661,6 +663,7 @@
       if(Date.now()-recentHoldAt<1600 || !isFreeMap() ||
          !isSurface(event.originalEvent?.target))return;
       recentHoldAt=Date.now();
+      suppressMapTapCloseUntil=recentHoldAt+850;
       cancelHold();lastTap=null;
       openMapPointCard(event.latlng);
     });
@@ -1451,7 +1454,8 @@
 
   // A tap on open map space dismisses any sheet, without cancelling
   // navigation, drawing, GPS follow, or site placement.
-  map.on('click', event => {
+  map.on('click', () => {
+    if (Date.now() < suppressMapTapCloseUntil) return;
     if (!$('sheet')?.hidden) closeSheet();
   });
 
