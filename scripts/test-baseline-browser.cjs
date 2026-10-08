@@ -767,13 +767,12 @@ const server = http.createServer((req, res) => {
         await page.locator('#sheetClose').click();
         await page.locator('.bottom-nav button[data-panel="plans"]').click();
         await auditText('plans');
-        if(await page.locator('#planContinueBtn').count()){
-          await page.locator('#planContinueBtn').click();
-          await auditText('plan-editor');
-          await page.locator('[data-edit-point="DEST"]').click();
-          await auditText('point-picker');
-          await page.locator('#pointPickerBack').click();
-        }
+        await page.locator('#planNewBtn').click();
+        assert.equal(await page.locator('#sheetTitle').textContent(),'계획 편집');
+        await auditText('plan-editor');
+        await page.locator('[data-edit-point="DEST"]').click();
+        await auditText('point-picker');
+        await page.locator('#pointPickerBack').click();
         await page.locator('#sheetClose').click();
         await page.locator('.bottom-nav button[data-panel="records"]').click();
         await auditText('records');
