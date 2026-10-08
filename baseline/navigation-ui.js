@@ -266,16 +266,40 @@
     }
 
     hud.hidden = false;
+    const navigating=Boolean(sessionState());
+    // Planning observes the final objective. An active route first presents
+    // its first VIA if present; never label the final destination as "next".
+    const activeTarget=navigating ? nextTarget() : draft.destination;
+    const coords=activeTarget?.coords;
+    const viaIndex=navigating && draft.vias.length && activeTarget===draft.vias[0] ? 1 : 0;
     const ref = S.reference();
     const nowCoords = ref ? [Number(ref.lat),Number(ref.lon)] : null;
-    const dest = draft.destination.coords;
     const start = draft.start?.coords || null;
-    const nowBundle = nowCoords ? Core.bearingBundle(nowCoords,dest) : null;
-    const startBundle = start ? Core.bearingBundle(start,dest) : null;
-    $('navNowMetric').textContent = metricText(nowBundle);
-    $('navStartMetric').textContent = metricText(startBundle);
-    const nextBlock = $('navNextBlock');
-    if (nextBlock) nextBlock.hidden = true;
+    const nowBundle = nowCoords && Core.validCoords(coords)
+      ? Core.bearingBundle(nowCoords,coords) : null;
+    const startBundle = start && Core.validCoords(coords)
+      ? Core.bearingBundle(start,coords) : null;
+    $('navModeLabel').textContent = navigating
+      ? (viaIndex ? 'NAV / 경유지 01' : 'NAV / 목적지') : 'PLAN / TARGET';
+    $('navTargetName').textContent=pointShort(activeTarget,'목적지');
+    $('navDistanceLabel').textContent=navigating?'잔여 직선 거리 · DIST':'직선 거리 · DIST';
+    const km=nowBundle?.distanceKm;
+    $('navDistanceValue').textContent=Number.isFinite(km)
+      ? (km<1?String(Math.round(km*1000)):km.toFixed(km<10?2:1)) : '--';
+    $('navDistanceUnit').textContent=Number.isFinite(km) && km<1 ? 'm' : 'km';
+
+    const setGauge=(valueId,needleId,angle)=>{
+      const valid=Number.isFinite(angle);
+      $(valueId).textContent=valid
+        ? String(Math.round(angle)%360).padStart(3,'0')+'°' : '--';
+      const needle=$(needleId);
+      needle.style.visibility=valid?'visible':'hidden';
+      if(valid)needle.setAttribute('transform','rotate('+angle+' 22 22)');
+    };
+    setGauge('navGridBearing','navGridNeedle',nowBundle?.gridBearing);
+    setGauge('navMagBearing','navMagNeedle',nowBundle?.magneticBearing);
+    $('navNowMetric').textContent='현재 기준 · '+metricText(nowBundle);
+    $('navStartMetric').textContent='출발 기준 · '+metricText(startBundle);
 
     const gm = nowBundle?.gridMagneticAngle;
     $('navDeclination').textContent = Number.isFinite(gm)

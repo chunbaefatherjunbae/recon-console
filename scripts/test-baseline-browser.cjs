@@ -501,17 +501,44 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#navRouteSummary').isVisible(), true);
       assert.equal(await page.locator('#navigationHud').isVisible(), true);
       const navLegibility=await page.evaluate(() => {
-        const el=document.getElementById('navigationHud');
-        const css=getComputedStyle(el);
-        const strong=getComputedStyle(document.getElementById('navNowMetric'));
-        const pos=document.getElementById('positionHud').getBoundingClientRect();
-        const summary=document.getElementById('navRouteSummary').getBoundingClientRect();
-        return {bg:css.backgroundColor,font:parseFloat(strong.fontSize),
-          noOverlap:summary.top>=pos.bottom-2};
+        const hud=document.getElementById('navigationHud');
+        const pos=document.getElementById('positionHud');
+        const summary=document.getElementById('navRouteSummary');
+        const css=getComputedStyle(hud);
+        const posShade=getComputedStyle(pos,'::before');
+        const distanceValue=getComputedStyle(document.getElementById('navDistanceValue'));
+        return {hudBackground:css.backgroundColor,mainBackdrop:posShade.backgroundColor,
+          font:parseFloat(distanceValue.fontSize),weight:parseFloat(distanceValue.fontWeight),
+          noOverlap:summary.getBoundingClientRect().top>=pos.getBoundingClientRect().bottom-2};
       });
-      assert(navLegibility.font>=12 && !navLegibility.bg.includes('0, 0, 0, 0'),
-        'navigation telemetry must have legible type and a real backdrop');
+      assert(navLegibility.font>=20 && navLegibility.weight<=700,
+        'PLAN numeric telemetry must use clear but moderate typographic weight');
+      assert.equal(navLegibility.hudBackground,'rgba(0, 0, 0, 0)',
+        'only main POS/RET HUD can have a tinted backdrop');
+      assert.notEqual(navLegibility.mainBackdrop,'rgba(0, 0, 0, 0)',
+        'POS/RET backdrop must remain visible');
       assert(navLegibility.noOverlap,'navigation route HUD must not obscure POS telemetry');
+      const gaugeReadouts=await page.evaluate(() => {
+        const plan=BaselineNavigationUI.getDraft();
+        const ref=BaselineState.reference();
+        const bundle=BaselineNavigationCore.bearingBundle([ref.lat,ref.lon],plan.destination.coords);
+        return {
+          bundle,
+          distance:document.getElementById('navDistanceValue').textContent,
+          unit:document.getElementById('navDistanceUnit').textContent,
+          grid:document.getElementById('navGridBearing').textContent,
+          mag:document.getElementById('navMagBearing').textContent,
+          gridRotation:document.getElementById('navGridNeedle').getAttribute('transform'),
+          magRotation:document.getElementById('navMagNeedle').getAttribute('transform')
+        };
+      });
+      assert.equal(gaugeReadouts.grid, String(Math.round(gaugeReadouts.bundle.gridBearing)%360).padStart(3,'0')+'°');
+      assert.equal(gaugeReadouts.mag, String(Math.round(gaugeReadouts.bundle.magneticBearing)%360).padStart(3,'0')+'°');
+      assert(gaugeReadouts.gridRotation.startsWith('rotate('+gaugeReadouts.bundle.gridBearing+' '),
+        'GRID instrument needle must represent its real calculated angle');
+      assert(gaugeReadouts.magRotation.startsWith('rotate('+gaugeReadouts.bundle.magneticBearing+' '),
+        'MAG instrument needle must represent its real calculated angle');
+
       assert.equal(await page.locator('#navNowMetric').textContent().then(t => t.includes('자북')), true);
       assert.equal(await page.locator('#navStartMetric').textContent().then(t => t.includes('도북')), true);
       assert.equal(await page.locator('#navDeclination').textContent().then(t => t.includes('도자각') && t.includes('WMM2025')), true);
@@ -532,6 +559,65 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('.route-end-marker').count(), 1);
       assert.equal(await page.locator('[data-nav-action="CLOSE"]').count(), 1);
       await page.screenshot({ path:`ui-results-baseline/${name}-navigation-ready.png`, fullPage:true });
+
+      // Verify all four viewport families while PLAN is active. A rotation
+      // must not relocate the geographic center or discard the route state.
+      const originalCenter=await page.evaluate(() => {
+        const c=BaselineApp.map.getCenter();return [c.lat,c.lng];
+      });
+      for(const spec of [
+        {label:'phone-portrait',width:390,height:844,columns:1},
+        {label:'phone-landscape',width:844,height:390,columns:2},
+        {label:'tablet-portrait',width:820,height:1100,columns:1},
+        {label:'tablet-landscape',width:1180,height:820,columns:1}
+      ]){
+        await page.setViewportSize({width:spec.width,height:spec.height});
+        await page.waitForTimeout(110);
+        await page.evaluate(() => BaselineApp.map.invalidateSize({animate:false}));
+        const responsive=await page.evaluate(() => {
+          const r=id=>document.getElementById(id).getBoundingClientRect();
+          const pos=r('positionHud'),nav=r('navigationHud'),
+            summary=r('navRouteSummary'),quick=r('tempBtn'),controls=r('navSessionControls'),
+            ret=r('reticle'),mapBox=r('map');
+          const all=[...document.querySelectorAll('.quick-btn')].map(x=>x.getBoundingClientRect());
+          const columns=new Set(all.map(x=>Math.round(x.left))).size;
+          const c=BaselineApp.map.getCenter();
+          return {
+            pos:{right:pos.right,bottom:pos.bottom},
+            nav:{right:nav.right,bottom:nav.bottom,top:nav.top},
+            summary:{top:summary.top},
+            quick:{left:quick.left,bottom:quick.bottom},
+            controls:{top:controls.top},
+            columns,
+            retCenter:[ret.left+ret.width/2,ret.top+ret.height/2],
+            mapCenter:[mapBox.left+mapBox.width/2,mapBox.top+mapBox.height/2],
+            lat:c.lat,lon:c.lng,
+            lastMetric:getComputedStyle(document.getElementById('navGridBearing')).fontSize
+          };
+        });
+        assert.equal(responsive.columns,spec.columns,spec.label+' quick controls layout');
+        assert(responsive.pos.right<spec.width-30,spec.label+' POS telemetry must fit');
+        assert(responsive.nav.right<responsive.quick.left-6,spec.label+' HUD must clear quick controls');
+        assert(responsive.nav.bottom<=responsive.controls.top-3,spec.label+' HUD must not cover actions');
+        assert(responsive.summary.top>=responsive.pos.bottom-2,spec.label+' route label must clear POS');
+        assert(Math.abs(responsive.retCenter[0]-responsive.mapCenter[0])<=1 &&
+          Math.abs(responsive.retCenter[1]-responsive.mapCenter[1])<=1,
+          spec.label+' reticle must stay at map center');
+        assert(Math.abs(responsive.lat-originalCenter[0])<0.00005 &&
+          Math.abs(responsive.lon-originalCenter[1])<0.00005,
+          spec.label+' resizing must preserve reference geographic center');
+        assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDraft()?.destination!=null),true);
+        await page.screenshot({path:`ui-results-baseline/${name}-instrument-${spec.label}.png`,fullPage:true});
+        if(spec.label==='tablet-landscape'){
+          await page.locator('#navRouteSummary').click();
+          const side=await page.locator('#sheet').boundingBox();
+          assert(side.x>spec.width*.5,'tablet landscape plan editor must use right drawer');
+          assert(side.x+side.width<spec.width-55,'right drawer must leave quick equipment keys exposed');
+          await page.locator('#sheetClose').click();
+        }
+      }
+      await page.setViewportSize({width:390,height:844});
+      await page.evaluate(() => BaselineApp.map.invalidateSize({animate:false}));
 
       await page.locator('[data-nav-action="CLOSE"]').click();
       assert.equal(await page.locator('#navRouteSummary').isHidden(), true);

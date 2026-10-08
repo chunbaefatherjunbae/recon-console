@@ -77,7 +77,7 @@ button, input { font:inherit; }
   margin-top:4px;
   color:var(--text-dim);
   font-size:9px;
-  font-weight:800;
+  font-weight:600;
   letter-spacing:.7px;
 }
 
@@ -100,7 +100,7 @@ button, input { font:inherit; }
   display:grid;
   place-items:center;
   font-size:20px;
-  font-weight:900;
+  font-weight:600;
   cursor:pointer;
   box-shadow:0 1px 6px rgba(0,0,0,.34);
   backdrop-filter:blur(2px);
@@ -150,7 +150,7 @@ button, input { font:inherit; }
   gap:2px;
   color:var(--accent);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
   text-shadow:0 1px 2px #000,0 0 5px var(--accent-glow);
   pointer-events:none;
 }
@@ -186,7 +186,7 @@ button, input { font:inherit; }
   align-items:center;
   justify-content:center;
   font-size:11px;
-  font-weight:900;
+  font-weight:600;
   letter-spacing:.4px;
   cursor:pointer;
 }
@@ -278,7 +278,7 @@ button, input { font:inherit; }
   background:var(--bg-osd);
   color:var(--accent);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
   opacity:0;
   pointer-events:none;
   transition:.16s ease;
@@ -384,7 +384,7 @@ body.theme-nvg-green {
   background:transparent;
   color:var(--text-dim);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .site-filter.active {
   color:var(--accent);
@@ -464,7 +464,7 @@ body.theme-nvg-green {
   border:1px solid var(--border);
   background:rgba(0,0,0,.16);
   color:var(--text-main);
-  font-weight:900;
+  font-weight:600;
   font-size:9px;
 }
 .site-actions button.primary {
@@ -520,7 +520,7 @@ body::after {
 .explore-ref small {
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .explore-ref strong {
   color:var(--accent);
@@ -540,7 +540,7 @@ body::after {
   background:transparent;
   color:var(--text-dim);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .explore-range button.active {
   color:var(--accent);
@@ -560,7 +560,7 @@ body::after {
   background:var(--bg-osd);
   color:var(--accent);
   font-size:10px;
-  font-weight:900;
+  font-weight:600;
   text-align:left;
 }
 .explore-actions button span {
@@ -568,7 +568,7 @@ body::after {
   margin-top:4px;
   color:var(--text-dim);
   font-size:8px;
-  font-weight:800;
+  font-weight:600;
 }
 .explore-foot {
   margin-top:9px;
@@ -595,7 +595,7 @@ body::after {
   gap:7px;
   text-align:left;
   font-size:9.5px;
-  font-weight:900;
+  font-weight:600;
   letter-spacing:.15px;
   text-shadow:0 1px 2px #000,0 0 5px var(--accent-glow);
 }
@@ -626,25 +626,25 @@ body::after {
 .navigation-hud small {
   color:var(--text-dim);
   font-size:7px;
-  font-weight:900;
+  font-weight:600;
   letter-spacing:.9px;
 }
 .navigation-hud strong {
   color:var(--accent);
   font-size:9.5px;
-  font-weight:900;
+  font-weight:600;
   line-height:1.25;
 }
 .navigation-hud .navigation-hud-sub {
   color:var(--text-dim);
   font-size:7.5px;
-  font-weight:900;
+  font-weight:600;
 }
 .navigation-timer {
   margin-top:3px;
   color:var(--accent)!important;
   font-size:14px!important;
-  font-weight:900!important;
+  font-weight:600!important;
   letter-spacing:1px;
 }
 
@@ -671,7 +671,7 @@ body::after {
   background:var(--bg-osd);
   color:var(--text-dim);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .nav-session-controls button.primary,
 .drawing-controls button.active {
@@ -707,7 +707,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--accent);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-library { display:grid; gap:6px; }
 .plan-library-row {
@@ -723,7 +723,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:transparent;
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-library-row .plan-open {
   border-left:0;
@@ -750,7 +750,7 @@ body.baseline-drawing .reticle { opacity:.28; }
 .plan-name span {
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-name input {
   min-height:42px;
@@ -771,7 +771,7 @@ body.baseline-drawing .reticle { opacity:.28; }
 .plan-route-row > span {
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-route-row > button {
   min-height:42px;
@@ -784,7 +784,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   white-space:nowrap;
   text-overflow:ellipsis;
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-row-tools { display:flex; gap:3px; }
 .plan-row-tools button {
@@ -802,7 +802,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:transparent;
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-editor-actions {
   display:grid;
@@ -815,7 +815,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--text-main);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .plan-editor-actions button.primary {
   color:var(--accent);
@@ -837,7 +837,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   color:var(--accent);
   text-align:left;
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .point-picker-grid button:disabled { opacity:.28; }
 .point-picker-grid span {
@@ -876,7 +876,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .point-picker-random {
   display:grid;
@@ -1004,7 +1004,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--accent);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
   text-align:left;
   padding:0 10px;
 }
@@ -1055,7 +1055,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--accent);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .site-add-results {
   display:grid;
@@ -1119,7 +1119,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .site-placement-bar button.primary {
   border-color:var(--border-accent);
@@ -1142,7 +1142,7 @@ body.baseline-drawing .reticle { opacity:.28; }
 .site-form-position strong { color:var(--accent); overflow-wrap:anywhere; }
 .site-form-position > :nth-last-child(-n+2) { border-bottom:0; }
 .site-form label { display:grid; gap:4px; }
-.site-form label span { color:var(--text-dim); font-size:8px; font-weight:900; }
+.site-form label span { color:var(--text-dim); font-size:8px; font-weight:600; }
 .site-form input,
 .site-form textarea {
   width:100%;
@@ -1165,7 +1165,7 @@ body.baseline-drawing .reticle { opacity:.28; }
   background:var(--bg-osd);
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .site-form-actions button.primary {
   color:var(--accent);
@@ -1221,7 +1221,7 @@ body.baseline-site-placement .nav-session-controls {
   white-space:nowrap;
   color:#5f9869;
   font-size:7px;
-  font-weight:800;
+  font-weight:600;
   line-height:1;
   text-shadow:0 1px 2px #000;
 }
@@ -1232,7 +1232,7 @@ body.baseline-site-placement .nav-session-controls {
 .settings-section > small {
   color:var(--text-dim);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .map-mode-options {
   display:grid;
@@ -1245,7 +1245,7 @@ body.baseline-site-placement .nav-session-controls {
   background:var(--bg-osd);
   color:var(--text-dim);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .map-mode-options button.active {
   color:var(--accent);
@@ -1261,7 +1261,7 @@ body.baseline-site-placement .nav-session-controls {
   color:var(--text-main);
   background:rgba(0,0,0,.12);
   font-size:8px;
-  font-weight:900;
+  font-weight:600;
 }
 .lite-pack-btn {
   min-height:44px;
@@ -1269,7 +1269,7 @@ body.baseline-site-placement .nav-session-controls {
   background:var(--bg-osd);
   color:var(--accent);
   font-size:9px;
-  font-weight:900;
+  font-weight:600;
 }
 .lite-pack-btn:disabled {
   opacity:.55;
@@ -1561,7 +1561,7 @@ body.baseline-navigation-active .site-map-marker-wrap {
   background:var(--bg-osd);
   color:var(--text-main);
   font-size:13px;
-  font-weight:800;
+  font-weight:600;
 }
 .record-actions .record-map-btn {
   color:var(--accent);
@@ -1665,7 +1665,7 @@ body.baseline-navigation-active .site-map-marker-wrap {
 .position-hud .map-mode-status {
   color:#79c88a;
   opacity:1;
-  font-weight:800;
+  font-weight:600;
   text-shadow:0 1px 2px rgba(0,0,0,.92);
 }
 
@@ -1677,12 +1677,12 @@ body.baseline-navigation-active .site-map-marker-wrap {
 }
 .position-hud #positionCoord {
   color:var(--accent);
-  font-weight:900;
+  font-weight:600;
 }
 .position-hud .reticle-coordinate {
   color:var(--text-main);
   opacity:.96;
-  font-weight:850;
+  font-weight:600;
 }
 .position-status-row {
   display:flex;
@@ -1699,7 +1699,7 @@ body.baseline-navigation-active .site-map-marker-wrap {
   letter-spacing:.1px;
   color:#8ed39c;
   opacity:1;
-  font-weight:800;
+  font-weight:600;
   text-shadow:0 1px 2px rgba(0,0,0,.95);
 }
 .position-status-row .map-mode-status {
@@ -1761,7 +1761,7 @@ body.baseline-navigation-active .site-map-marker-wrap {
   border:1px solid var(--border);
   background:rgba(0,0,0,.16);
   color:var(--text-main);
-  font-weight:850;
+  font-weight:600;
   font-size:13px;
 }
 .site-actions .site-destination-action {
@@ -1992,7 +1992,7 @@ body.layer-hide-track .baseline-track-path {
 .layer-toggle-row > span small { display:block; }
 .layer-toggle-row > span strong {
   font-size:14px;
-  font-weight:850;
+  font-weight:600;
   color:var(--text-main);
 }
 .layer-toggle-row > span small {
@@ -2282,7 +2282,7 @@ body.layer-hide-track .baseline-track-path {
   color:#d0f9d4;
   font-size:13px;
   line-height:1.42;
-  font-weight:900;
+  font-weight:600;
   word-break:keep-all;
   overflow-wrap:break-word;
 }
@@ -2323,4 +2323,388 @@ body.layer-hide-track .baseline-track-path {
 @media(max-width:370px){
   .drawing-controls{gap:3px;left:5px;right:5px;}
   .drawing-controls button{font-size:11px;padding-inline:2px;}
+}
+
+/* ---------- RECON instrument design system v1.0 ---------- */
+/* Theme colours remain owned by the theme presets above. */
+:root {
+  --recon-weight-label:500;
+  --recon-weight-action:600;
+  --recon-weight-value:600;
+  --recon-weight-emphasis:700;
+  --recon-stroke-hairline:1px;
+  --recon-stroke-primary:2px;
+  --recon-gap-inner:6px;
+  --recon-gap-cluster:14px;
+  --recon-edge:12px;
+  --safe-left:env(safe-area-inset-left,0px);
+  --safe-right:env(safe-area-inset-right,0px);
+}
+
+/* Keep the original tinted POS/RET backdrop, sized to its green rule. */
+.position-hud {
+  left:calc(var(--safe-left) + var(--recon-edge));
+  max-width:calc(100vw - var(--safe-left) - var(--safe-right) - 82px);
+}
+.position-hud #positionCoord { font-weight:600; }
+.position-hud .reticle-coordinate { font-weight:600; }
+.position-hud .position-status-row span {
+  font-weight:500;
+  letter-spacing:.1px;
+}
+.position-hud::before { top:0;bottom:0; }
+/* Field controls use consistent tap boxes and states, not heavy type. */
+.quick-stack { right:calc(var(--safe-right) + 10px); }
+.quick-btn {
+  min-width:44px;
+  min-height:44px;
+  font-weight:600;
+}
+.quick-btn:focus-visible,
+.sheet button:focus-visible,
+.bottom-nav button:focus-visible,
+.nav-route-summary:focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.quick-btn.active { border-width:1px; }
+.bottom-nav button {
+  font-weight:600;
+  font-size:14px;
+  letter-spacing:0;
+}
+.scale-hud {font-weight:500;}
+
+/* The route summary is an action. The telemetry beneath is an overlay,
+   not a new opaque card. */
+.nav-route-summary {
+  top:calc(var(--safe-top) + 115px);
+  left:calc(var(--safe-left) + 14px);
+  right:calc(var(--safe-right) + 72px);
+  min-height:30px;
+  padding:1px 1px 1px 10px;
+  background:transparent!important;
+  border:0!important;
+  border-left:1px solid var(--accent)!important;
+  box-shadow:none!important;
+  font-weight:600;
+  font-size:13px;
+  line-height:1.35;
+  color:var(--accent);
+  text-shadow:0 1px 2px #000,0 0 4px var(--accent-glow);
+}
+.navigation-hud {
+  top:calc(var(--safe-top) + 157px);
+  left:calc(var(--safe-left) + 14px);
+  width:min(290px,calc(100vw - var(--safe-left) - var(--safe-right) - 94px));
+  min-width:0;
+  padding:0 0 0 11px;
+  border:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  font-family:var(--font-ui);
+  text-shadow:0 1px 2px #000,0 0 4px rgba(0,0,0,.7);
+}
+.navigation-hud::before {
+  content:'';
+  position:absolute;
+  top:0;
+  left:0;
+  bottom:0;
+  width:1px;
+  background:var(--accent);
+  opacity:.68;
+}
+.navigation-hud .nav-instrument-header {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  min-width:0;
+}
+.navigation-hud small {
+  font-size:11px;
+  color:var(--text-dim);
+  font-weight:500;
+  letter-spacing:.15px;
+  line-height:1.25;
+}
+.navigation-hud .nav-instrument-header strong {
+  color:var(--accent);
+  font-family:var(--font-ui);
+  font-size:14px;
+  font-weight:600;
+  line-height:1.25;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  word-break:keep-all;
+}
+.navigation-hud .nav-instrument-main {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+}
+.navigation-hud .nav-distance-readout { display:flex;flex-direction:column;gap:2px; }
+.navigation-hud .nav-distance-line {
+  display:flex;
+  flex-direction:row;
+  align-items:baseline;
+  gap:5px;
+  white-space:nowrap;
+}
+.navigation-hud .nav-distance-line strong {
+  color:var(--accent);
+  font-size:23px;
+  font-weight:600;
+  line-height:1.12;
+  letter-spacing:-.25px;
+}
+.navigation-hud .nav-distance-line span {
+  color:var(--text-dim);
+  font-size:12px;
+  font-weight:500;
+}
+.navigation-hud .nav-angle-pair {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+  min-width:0;
+}
+.navigation-hud .nav-angle-readout {
+  display:flex;
+  flex-direction:column;
+  gap:1px;
+  min-width:0;
+}
+.navigation-hud .nav-angle-line {
+  display:flex;
+  flex-direction:row;
+  align-items:center;
+  gap:3px;
+  min-width:0;
+}
+.navigation-hud .nav-angle-line strong {
+  font-family:var(--font-mono);
+  color:var(--accent);
+  font-size:20px;
+  line-height:1.15;
+  font-weight:600;
+  white-space:nowrap;
+}
+.nav-bearing-gauge {
+  flex:none;
+  width:37px;
+  height:37px;
+  color:var(--accent);
+  overflow:visible;
+}
+.nav-gauge-ring,.nav-gauge-ticks {
+  stroke:var(--text-dim);
+  stroke-width:1.1;
+  fill:none;
+}
+.nav-gauge-needle {fill:var(--accent);stroke:none;}
+.nav-gauge-center {fill:var(--bg-base);stroke:var(--accent);stroke-width:.8;}
+.navigation-hud .nav-instrument-secondary {
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  padding-top:3px;
+  border-top:1px solid color-mix(in srgb,var(--accent) 32%,transparent);
+}
+.navigation-hud .nav-instrument-secondary span {
+  display:block;
+  color:var(--text-dim);
+  font:500 10px/1.4 var(--font-mono);
+  overflow-wrap:anywhere;
+  word-break:keep-all;
+}
+.navigation-hud .nav-instrument-footer {
+  display:flex;
+  flex-direction:row;
+  flex-wrap:wrap;
+  align-items:baseline;
+  gap:5px 12px;
+}
+.navigation-hud .navigation-hud-sub {
+  color:var(--text-dim);
+  font:500 11px/1.4 var(--font-mono);
+}
+.navigation-hud .navigation-timer {
+  margin:0;
+  font-family:var(--font-mono);
+  font-size:15px!important;
+  font-weight:600!important;
+  letter-spacing:.15px;
+}
+.nav-session-controls button,.drawing-controls button {
+  font-size:13px;
+  font-weight:600;
+  min-height:44px;
+}
+.sheet {
+  border-color:var(--border-accent);
+  border-radius:5px;
+}
+.sheet-head {padding:10px 14px;gap:12px;}
+.sheet-head strong {font-weight:700;}
+.sheet-head small {font-weight:500;letter-spacing:.3px;}
+.sheet-body {padding:14px;line-height:1.55;}
+.sheet-body strong,.site-detail-head strong,.plan-current strong {font-weight:600;}
+.sheet-body button {font-weight:600;border-radius:3px;}
+.sheet-action {padding:12px;border-radius:3px;}
+.site-detail-grid {row-gap:5px;}
+.site-detail-grid strong {font-weight:600;}
+.toast {font-weight:600;}
+.site-row strong,.plan-library-row strong {font-weight:600;}
+.layer-toggle-row > span strong {font-weight:600;}
+/* Explicit importance: emphasis without blanket heavy bold. */
+.site-destination-action,.nav-session-controls .primary,.sheet button.primary {
+  font-weight:700;
+}
+
+/* Phone portrait: retain the established layout, avoid the right column. */
+@media (max-width:599px) and (min-height:521px) {
+  .navigation-hud {
+    width:min(288px,calc(100vw - var(--safe-left) - var(--safe-right) - 86px));
+  }
+  .navigation-hud .nav-bearing-gauge{width:34px;height:34px;}
+  .nav-session-controls,.drawing-controls {
+    left:calc(var(--safe-left) + 6px);
+    right:calc(var(--safe-right) + 6px);
+  }
+}
+/* Phone landscape / genuinely short window: only this mode uses 2x3
+   right controls. This breakpoint uses available viewport, not user agent. */
+@media (min-width:600px) and (max-height:520px) {
+  :root {--bottom-h:calc(52px + var(--safe-bottom));--recon-edge:10px;}
+  .position-hud {top:calc(var(--safe-top) + 8px);max-width:256px;}
+  .position-hud strong{font-size:12px;line-height:1.25;}
+  .position-hud .reticle-coordinate{margin-bottom:0;padding-bottom:3px;}
+  .position-hud .position-status-row span{font-size:10px;}
+  .quick-stack {
+    top:calc(var(--safe-top) + 8px);
+    display:grid;
+    grid-template-columns:repeat(2,44px);
+    grid-auto-flow:row;
+    gap:6px;
+  }
+  .quick-btn{width:44px;height:44px;}
+  .nav-route-summary {
+    left:calc(var(--safe-left) + 10px);
+    top:calc(var(--safe-top) + 89px);
+    width:270px;right:auto;
+    min-height:24px;
+    font-size:12px;
+  }
+  .navigation-hud {
+    left:calc(var(--safe-left) + 10px);
+    top:calc(var(--safe-top) + 120px);
+    width:284px;
+    gap:5px;
+    padding-left:8px;
+  }
+  .navigation-hud .nav-instrument-header {
+    display:flex;
+    flex-direction:row;
+    align-items:baseline;
+    gap:9px;
+  }
+  .navigation-hud .nav-instrument-header strong{font-size:12px;}
+  .navigation-hud .nav-instrument-main {
+    display:grid;
+    grid-template-columns:75px minmax(0,1fr);
+    gap:9px;
+    align-items:end;
+  }
+  .navigation-hud .nav-distance-line strong{font-size:19px;}
+  .navigation-hud .nav-distance-line span{font-size:10px;}
+  .navigation-hud .nav-angle-line strong{font-size:17px;}
+  .navigation-hud .nav-bearing-gauge{width:25px;height:25px;}
+  .navigation-hud .nav-angle-pair{gap:6px;}
+  .navigation-hud small{font-size:10px;line-height:1.2;}
+  .navigation-hud .nav-instrument-secondary {display:none;}
+  .navigation-hud .nav-instrument-footer{gap:5px;}
+  .navigation-hud .navigation-hud-sub{font-size:10px;}
+  .navigation-hud .navigation-timer{font-size:12px!important;}
+  .nav-session-controls,.drawing-controls {
+    left:calc(var(--safe-left) + 8px);
+    right:calc(var(--safe-right) + 8px);
+    bottom:calc(var(--bottom-h) + 7px);
+  }
+  .nav-session-controls button,.drawing-controls button{
+    font-size:12px;min-height:44px;
+  }
+  .sheet {
+    left:calc(var(--safe-left) + 12px);
+    right:calc(var(--safe-right) + 12px);
+    bottom:calc(var(--bottom-h) + 5px);
+    max-height:calc(100dvh - var(--safe-top) - var(--bottom-h) - 16px);
+  }
+}
+/* A narrow Stage Manager/Split View window behaves as phone portrait if
+   it does not satisfy either of the wide layout constraints. */
+@media (min-width:600px) and (max-width:899px) and (min-height:521px) {
+  :root {--bottom-h:calc(66px + var(--safe-bottom));--recon-edge:16px;}
+  .position-hud{max-width:340px;}
+  .quick-stack{right:calc(var(--safe-right) + 16px);gap:8px;}
+  .quick-btn{width:48px;height:48px;}
+  .nav-route-summary{left:calc(var(--safe-left) + 20px);}
+  .navigation-hud{
+    left:calc(var(--safe-left) + 20px);
+    width:330px;
+  }
+  .navigation-hud .nav-distance-line strong{font-size:25px;}
+  .navigation-hud .nav-angle-line strong{font-size:22px;}
+  .sheet {
+    width:min(490px,calc(100vw - var(--safe-left) - var(--safe-right) - 32px));
+    left:50%;right:auto;
+    transform:translateX(-50%);
+    max-height:min(60dvh,620px);
+  }
+}
+/* Tablet landscape: keep the center of the map usable, move cards to
+   a bounded right drawer that does not cover the equipment quick keys. */
+@media (min-width:900px) and (min-height:521px) {
+  :root {--bottom-h:calc(66px + var(--safe-bottom));--recon-edge:20px;}
+  .position-hud{max-width:350px;}
+  .quick-stack{right:calc(var(--safe-right) + 16px);gap:8px;}
+  .quick-btn{width:50px;height:50px;}
+  .nav-route-summary{left:calc(var(--safe-left) + 20px);width:335px;right:auto;}
+  .navigation-hud{
+    left:calc(var(--safe-left) + 20px);
+    width:340px;
+  }
+  .navigation-hud .nav-distance-line strong{font-size:26px;}
+  .navigation-hud .nav-angle-line strong{font-size:23px;}
+  .sheet {
+    top:calc(var(--safe-top) + 14px);
+    bottom:calc(var(--bottom-h) + 12px);
+    left:auto;
+    right:calc(var(--safe-right) + 83px);
+    width:min(385px,calc(100vw - var(--safe-left) - var(--safe-right) - 165px));
+    max-height:none;
+    transform:none;
+  }
+}
+/* Safe fallback for very narrow landscape split windows. */
+@media (max-width:599px) and (max-height:520px) {
+  :root {--bottom-h:calc(52px + var(--safe-bottom));--recon-edge:8px;}
+  .position-hud{top:calc(var(--safe-top) + 5px);}
+  .quick-stack{top:calc(var(--safe-top) + 5px);gap:3px;}
+  .nav-route-summary{top:calc(var(--safe-top) + 97px);}
+  .navigation-hud{
+    top:calc(var(--safe-top) + 135px);
+    width:min(260px,calc(100vw - 80px));
+    gap:4px;
+  }
+  .navigation-hud .nav-instrument-secondary{display:none;}
+  .navigation-hud .nav-bearing-gauge{width:27px;height:27px;}
+  .navigation-hud .nav-angle-line strong{font-size:18px;}
+  .nav-session-controls,.drawing-controls{bottom:calc(var(--bottom-h) + 3px);}
 }
