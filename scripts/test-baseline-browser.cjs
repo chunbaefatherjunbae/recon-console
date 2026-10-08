@@ -167,9 +167,22 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#tempMoveReticle').count(), 1);
       assert.equal(await page.locator('#tempClear').count(), 1);
       await page.locator('#sheetClose').click();
+      await page.evaluate(() => BaselineApp.map.panBy([65,45],{animate:false}));
+      const newTempAtCenter=await page.evaluate(() => {
+        const c=BaselineApp.map.getCenter();return {lat:c.lat,lon:c.lng};
+      });
       await page.locator('#tempBtn').click();
-      assert.equal(await page.locator('#sheetTitle').textContent(), '임시위치', 'TEMP control must open saved position card');
-      await page.locator('#sheetClose').click();
+      assert.equal(await page.locator('#sheet').isHidden(),true,
+        'TEMP quick button must never open a previous marker card');
+      const updatedTemp=await page.evaluate(() => BaselineState.state.temp);
+      assert(Math.abs(updatedTemp.lat-newTempAtCenter.lat)<0.000002);
+      assert(Math.abs(updatedTemp.lon-newTempAtCenter.lon)<0.000002);
+      await page.locator('.baseline-marker.temp').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(),'임시위치',
+        'tapping TEMP marker must still open its information card');
+      // All modal sheets close when the exposed map is tapped.
+      await page.locator('#map').click({position:{x:85,y:275}});
+      assert.equal(await page.locator('#sheet').isHidden(),true,'map tap must close open sheet');
 
       // A held finger must use its map pixel, not the reticle/center position.
       const mapTouch = await page.evaluate(() => {
@@ -203,11 +216,8 @@ const server = http.createServer((req, res) => {
       });
       assert(Math.hypot(selectionCoords.x-mapTouch.x,selectionCoords.y-mapTouch.y)<3,'selection marker must be drawn at held pixel');
       await page.locator('#sheetClose').click();
-      assert.equal(await page.locator('.map-selected-icon').count(),1,'unsaved selection remains visible after card closes');
-      await page.locator('.map-selected-icon').click();
-      assert.equal(await page.locator('#sheetTitle').textContent(),'위치 정보','selected marker must reopen location card');
-      await page.locator('#mapPointClear').click();
-      assert.equal(await page.locator('.map-selected-icon').count(),0,'dismiss selection removes marker');
+      assert.equal(await page.locator('.map-selected-icon').count(),0,
+        'selected marker must be removed on card dismissal');
 
       await page.locator('#map').dispatchEvent('pointerup',{
         pointerId:771,pointerType:'touch',isPrimary:true,button:0,
@@ -480,6 +490,18 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#sheet').isHidden(), true);
       assert.equal(await page.locator('#navRouteSummary').isVisible(), true);
       assert.equal(await page.locator('#navigationHud').isVisible(), true);
+      const navLegibility=await page.evaluate(() => {
+        const el=document.getElementById('navigationHud');
+        const css=getComputedStyle(el);
+        const strong=getComputedStyle(document.getElementById('navNowMetric'));
+        const pos=document.getElementById('positionHud').getBoundingClientRect();
+        const summary=document.getElementById('navRouteSummary').getBoundingClientRect();
+        return {bg:css.backgroundColor,font:parseFloat(strong.fontSize),
+          noOverlap:summary.top>=pos.bottom-2};
+      });
+      assert(navLegibility.font>=12 && !navLegibility.bg.includes('0, 0, 0, 0'),
+        'navigation telemetry must have legible type and a real backdrop');
+      assert(navLegibility.noOverlap,'navigation route HUD must not obscure POS telemetry');
       assert.equal(await page.locator('#navNowMetric').textContent().then(t => t.includes('자북')), true);
       assert.equal(await page.locator('#navStartMetric').textContent().then(t => t.includes('도북')), true);
       assert.equal(await page.locator('#navDeclination').textContent().then(t => t.includes('도자각') && t.includes('WMM2025')), true);
@@ -538,7 +560,44 @@ const server = http.createServer((req, res) => {
       });
       assert(Math.abs(centerAfterGesture[0]-centerBeforeGesture[0]) > 0.00001 || Math.abs(centerAfterGesture[1]-centerBeforeGesture[1]) > 0.00001);
 
+      const zoomBeforePinch=await page.evaluate(() => BaselineApp.map.getZoom());
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown', {pointerId:31,pointerType:'touch',isPrimary:true,clientX:drawBox.x+125,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown', {pointerId:32,pointerType:'touch',isPrimary:false,clientX:drawBox.x+245,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove', {pointerId:31,pointerType:'touch',isPrimary:true,clientX:drawBox.x+75,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove', {pointerId:32,pointerType:'touch',isPrimary:false,clientX:drawBox.x+295,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerup', {pointerId:31,pointerType:'touch',isPrimary:true,clientX:drawBox.x+75,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerup', {pointerId:32,pointerType:'touch',isPrimary:false,clientX:drawBox.x+295,clientY:drawBox.y+310});
+      assert(await page.evaluate(() => BaselineApp.map.getZoom())>=zoomBeforePinch+.5,'two-finger drawing must actually zoom');
+      assert.equal(await page.evaluate(() => BaselineNavigationUI.getDraft().drawings.length),1,'pinch must not add strokes');
+
+      await page.locator('[data-draw-kind="ERASE"]').click();
+      assert.equal(await page.locator('[data-draw-kind="ERASE"]').getAttribute('class')?.then(x=>x.includes('active')),true);
+      const eraseLocation=await page.evaluate(() => {
+        const draft=BaselineNavigationUI.getDraft();
+        const map=BaselineApp.map;
+        const points=draft.drawings[0].points;
+        const center=map.latLngToContainerPoint(points[1]);
+        const rect=map.getContainer().getBoundingClientRect();
+        const length=points.slice(1).reduce((sum,p,i)=>sum+map.latLngToContainerPoint(p).distanceTo(map.latLngToContainerPoint(points[i])),0);
+        return {x:center.x+rect.left,y:center.y+rect.top,length};
+      });
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x,clientY:eraseLocation.y});
+      assert.equal(await page.locator('#drawingEraserCursor').isVisible(),true);
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x,clientY:eraseLocation.y});
+      const erased=await page.evaluate(() => {
+        const plan=BaselineNavigationUI.getDraft(),map=BaselineApp.map;
+        return {count:plan.drawings.length,
+          length:plan.drawings.reduce((sum,seg)=>sum+seg.points.slice(1).reduce((n,p,i)=>
+            n+map.latLngToContainerPoint(p).distanceTo(map.latLngToContainerPoint(seg.points[i])),0),0)};
+      });
+      assert(erased.count>0 && erased.length<eraseLocation.length-5,
+        'eraser must remove only the touched portion, not the entire drawing');
+      await page.locator('#drawUndoBtn').click();
+      const restored=await page.evaluate(() => BaselineNavigationUI.getDraft().drawings.length);
+      assert.equal(restored,1,'undo must restore erased stroke segments');
       await page.locator('#drawDoneBtn').click();
+      assert.equal(await page.evaluate(() => BaselineApp.map.options.zoomSnap),1,
+        'normal map zoom snapping must be restored after drawing');
       assert.equal(await page.locator('#drawingCapture').isHidden(), true);
 
       // Session lifecycle + TRACK v1: GPS-only points, pause segmentation, reload recovery.

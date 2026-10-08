@@ -20,6 +20,7 @@
   let tempHoldTriggered = false;
   let tempMarker = null;
   let selectedMapMarker = null;
+  let suppressMapTapCloseUntil = 0;
   let gpsMarker = null;
   let lastMarker = null;
   let activeSiteFilter = 'registered';
@@ -443,7 +444,8 @@
   function setTempAtReticle() {
     const c = map.getCenter();
     S.setTemp({ lat: c.lat, lon: c.lng });
-    toast('TEMP 지정');
+    if (!$('sheet')?.hidden) closeSheet();
+    toast('임시위치 갱신');
   }
 
   function moveToTemp() {
@@ -553,7 +555,7 @@
         '<div class="site-actions">' +
           '<button class="primary site-destination-action" type="button" id="mapPointTemp">임시위치 지정</button>' +
           '<div class="site-actions-secondary">' +
-            '<button type="button" id="mapPointCenter">지도 이동</button>' +
+            '<button type="button" id="mapPointCenter">조준점 이동</button>' +
             '<button type="button" id="mapPointCopy">좌표 복사</button>' +
           '</div>' +
           '<div class="site-actions-manage">' +
@@ -618,6 +620,7 @@
         if (!active || !isFreeMap()) return;
         const location=map.containerPointToLatLng([active.p.x,active.p.y]);
         recentHoldAt=Date.now();
+        suppressMapTapCloseUntil=recentHoldAt+850;
         active.long=true;
         lastTap=null;
         openMapPointCard(location);
@@ -660,6 +663,7 @@
       if(Date.now()-recentHoldAt<1600 || !isFreeMap() ||
          !isSurface(event.originalEvent?.target))return;
       recentHoldAt=Date.now();
+      suppressMapTapCloseUntil=recentHoldAt+850;
       cancelHold();lastTap=null;
       openMapPointCard(event.latlng);
     });
@@ -683,10 +687,7 @@
 
     const finish = () => {
       clearTimeout(tempHoldTimer);
-      if (!tempHoldTriggered) {
-        if (S.state.temp) openTempDetail();
-        else setTempAtReticle();
-      }
+      if (!tempHoldTriggered) setTempAtReticle();
       tempHoldTriggered = false;
     };
 
@@ -1188,6 +1189,7 @@
   }
 
   function openSheet(panel, custom) {
+    if (S.state.activePanel === 'map-point' && panel !== 'map-point') clearSelectedMapPoint();
     if (sitePlacementActive) {
       sitePlacementActive = false;
       document.body.classList.remove('baseline-site-placement');
@@ -1207,6 +1209,7 @@
 
   function closeSheet() {
     if (S.state.activePanel === 'explore') clearExploreCircle();
+    if (S.state.activePanel === 'map-point') clearSelectedMapPoint();
     $('sheet').hidden = true;
     S.setPanel(null);
     setActiveNav(null);
@@ -1448,6 +1451,13 @@
 
   bindTempGesture();
   bindMapGestures();
+
+  // A tap on open map space dismisses any sheet, without cancelling
+  // navigation, drawing, GPS follow, or site placement.
+  map.on('click', () => {
+    if (Date.now() < suppressMapTapCloseUntil) return;
+    if (!$('sheet')?.hidden) closeSheet();
+  });
 
   let reticleHudFrame=0;
   map.on('move zoom resize', () => {
