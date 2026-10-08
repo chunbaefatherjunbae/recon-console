@@ -11,6 +11,8 @@
 
   const DEFAULT_CENTER = [37.5665, 126.9780];
   const HOLD_MS = 560;
+  const MAP_HOLD_MS = 650;
+  const MAP_HOLD_SLOP = 13;
   const $ = id => document.getElementById(id);
 
   let toastTimer = null;
@@ -474,10 +476,10 @@
           '<span>지정</span><strong>' + esc(ageLabel(temp.at) || '저장됨') + '</strong>' +
         '</div>' +
         '<div class="site-actions">' +
-          '<button class="primary site-destination-action" type="button" id="tempMapGo">지도에서 보기</button>' +
+          '<button class="primary site-destination-action" type="button" id="tempMapGo">지도 보기</button>' +
           '<div class="site-actions-secondary">' +
             '<button type="button" id="tempCopyCoord">좌표 복사</button>' +
-            '<button type="button" id="tempMoveReticle">조준점으로 재지정</button>' +
+            '<button type="button" id="tempMoveReticle">조준점 지정</button>' +
           '</div>' +
           '<div class="site-actions-manage"><button class="danger" type="button" id="tempClear">임시위치 삭제</button></div>' +
         '</div>' +
@@ -507,6 +509,125 @@
       closeSheet();
       toast('임시위치 삭제');
     });
+  }
+
+
+  function openMapPointCard(latlng) {
+    const lat = Number(latlng?.lat), lon = Number(latlng?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+        Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
+    const point = { lat, lon };
+    const html =
+      '<div class="site-detail">' +
+        '<div class="site-detail-head"><small>지도에서 선택한 위치</small><strong>위치 좌표</strong></div>' +
+        '<div class="site-detail-grid">' +
+          '<span>MGRS</span><strong>' + esc(formatMgrs(point)) + '</strong>' +
+          '<span>WGS84</span><strong>' + lat.toFixed(6) + ', ' + lon.toFixed(6) + '</strong>' +
+        '</div>' +
+        '<div class="site-actions">' +
+          '<button class="primary site-destination-action" type="button" id="mapPointTemp">임시위치 지정</button>' +
+          '<div class="site-actions-secondary">' +
+            '<button type="button" id="mapPointCenter">지도 이동</button>' +
+            '<button type="button" id="mapPointCopy">좌표 복사</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    openSheet('map-point', { title:'위치 정보', html });
+    $('mapPointTemp')?.addEventListener('click', () => {
+      S.setTemp(point);
+      closeSheet();
+      toast('임시위치 지정');
+    });
+    $('mapPointCenter')?.addEventListener('click', () => {
+      if (S.state.gps.follow) S.setFollow(false);
+      map.setView([lat, lon], map.getZoom(), { animate:false });
+      closeSheet();
+    });
+    $('mapPointCopy')?.addEventListener('click', async () => {
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+        await navigator.clipboard.writeText(formatMgrs(point));
+        toast('MGRS 복사');
+      } catch { toast('좌표 복사 불가'); }
+    });
+  }
+
+  function bindMapGestures() {
+    const container=map.getContainer();
+    let active=null, holdTimer=null, recentHoldAt=0, lastTap=null, nativeDoubleClickAt=0;
+    function cancelHold() {
+      if (holdTimer!==null) clearTimeout(holdTimer);
+      holdTimer=null;
+      active=null;
+    }
+    function isFreeMap() {
+      return !sitePlacementActive &&
+        !document.body.classList.contains('baseline-drawing') && $('sheet')?.hidden!==false;
+    }
+    function isSurface(target) {
+      return !target?.closest?.('.leaflet-marker-icon, .leaflet-popup, .leaflet-control, button, a');
+    }
+    function pixel(event) {
+      const rect=container.getBoundingClientRect();
+      return {x:event.clientX-rect.left,y:event.clientY-rect.top};
+    }
+    container.addEventListener('pointerdown',event=>{
+      if (!isFreeMap() || !isSurface(event.target) || !event.isPrimary ||
+          (event.pointerType==='mouse' && event.button!==0)) {
+        cancelHold(); lastTap=null; return;
+      }
+      if(active) { cancelHold(); lastTap=null; return; }
+      const p=pixel(event);
+      active={id:event.pointerId,type:event.pointerType,p,at:Date.now(),long:false};
+      holdTimer=setTimeout(()=>{
+        if (!active || !isFreeMap()) return;
+        const location=map.containerPointToLatLng([active.p.x,active.p.y]);
+        recentHoldAt=Date.now();
+        active.long=true;
+        lastTap=null;
+        openMapPointCard(location);
+        holdTimer=null;
+      },MAP_HOLD_MS);
+    },{passive:true});
+    container.addEventListener('pointermove',event=>{
+      if(!active || active.id!==event.pointerId)return;
+      const p=pixel(event);
+      if(Math.hypot(p.x-active.p.x,p.y-active.p.y)>MAP_HOLD_SLOP)cancelHold();
+    },{passive:true});
+    container.addEventListener('pointerup',event=>{
+      if(!active || active.id!==event.pointerId)return;
+      const first=active,p=pixel(event),age=Date.now()-first.at;
+      cancelHold();
+      if(first.long || !isFreeMap() || first.type!=='touch' ||
+         age>430 || Math.hypot(p.x-first.p.x,p.y-first.p.y)>MAP_HOLD_SLOP) {
+        lastTap=null; return;
+      }
+      const now=Date.now();
+      if(lastTap && now-lastTap.at<=370 && Math.hypot(p.x-lastTap.x,p.y-lastTap.y)<34) {
+        lastTap=null;
+        // Fast double-taps already zoom through Leaflet. Cover slower
+        // iPhone taps only if Leaflet did not fire a native dblclick.
+        const stamp=now;
+        setTimeout(()=>{
+          if(!isFreeMap() || nativeDoubleClickAt>=stamp-60)return;
+          map.setZoomAround([p.x,p.y],Math.min(map.getMaxZoom(),map.getZoom()+1));
+        },45);
+      } else lastTap={at:now,x:p.x,y:p.y};
+    },{passive:true});
+    container.addEventListener('pointercancel',cancelHold,{passive:true});
+    container.addEventListener('pointerleave',event=>{
+      if(event.pointerType==='mouse')cancelHold();
+    },{passive:true});
+    map.on('dragstart zoomstart',()=>{cancelHold();lastTap=null;});
+    map.on('dblclick',()=>{nativeDoubleClickAt=Date.now();lastTap=null;});
+    map.on('contextmenu',event=>{
+      if(Date.now()-recentHoldAt<1600 || !isFreeMap() ||
+         !isSurface(event.originalEvent?.target))return;
+      recentHoldAt=Date.now();
+      cancelHold();lastTap=null;
+      openMapPointCard(event.latlng);
+    });
+    container.addEventListener('contextmenu',event=>event.preventDefault());
   }
 
   function bindTempGesture() {
@@ -700,7 +821,7 @@
     return '<div class="site-add-source">' +
       '<button type="button" data-site-add-source="MAP"><strong>지도에서 직접 선택</strong><span>현재 조준점에서 시작</span></button>' +
       '<button type="button" data-site-add-source="REF" ' + (ref ? '' : 'disabled') + '><strong>현재 기준 위치</strong><span>' + (ref ? esc(ref.type + ' · ' + formatMgrs(ref)) : '없음') + '</span></button>' +
-      '<button type="button" data-site-add-source="TEMP" ' + (temp ? '' : 'disabled') + '><strong>TEMP</strong><span>' + (temp ? esc(formatMgrs(temp)) : '없음') + '</span></button>' +
+      '<button type="button" data-site-add-source="TEMP" ' + (temp ? '' : 'disabled') + '><strong>임시위치</strong><span>' + (temp ? esc(formatMgrs(temp)) : '없음') + '</span></button>' +
       '</div>' +
       '<div class="site-add-search"><input id="siteAddAddress" type="search" autocomplete="street-address" placeholder="주소 검색 (온라인)"><button id="siteAddAddressGo" type="button">검색</button></div>' +
       '<div class="site-add-results" id="siteAddAddressResults"></div>' +
@@ -827,8 +948,8 @@
         '<div class="site-actions">' +
           '<button class="primary site-destination-action" type="button" id="siteDestinationSet">목적지 설정</button>' +
           '<div class="site-actions-secondary">' +
-            '<button type="button" id="siteMapGo">지도에서 보기</button>' +
-            '<button type="button" id="siteSecureToggle">' + (secured ? '미개척으로' : '개척 완료') + '</button>' +
+            '<button type="button" id="siteMapGo">지도 보기</button>' +
+            '<button type="button" id="siteSecureToggle">' + (secured ? '개척 취소' : '개척 완료') + '</button>' +
           '</div>' +
           (editable ? '<div class="site-actions-manage"><button type="button" id="siteEditBtn">수정</button><button class="danger" type="button" id="siteDeleteBtn">삭제</button></div>' : '') +
         '</div>' +
@@ -919,8 +1040,8 @@
     return '<div class="explore-ref"><small>탐색 기준</small><strong id="exploreRefText">' + esc(refText) + '</strong></div>' +
       '<div class="explore-range">' + rangeButtons + '</div>' +
       '<div class="explore-actions">' +
-        '<button type="button" id="exploreRegisteredBtn">무작위 거점<span>아직 개척하지 않은 등록 거점 중 하나를 선택</span></button>' +
-        '<button type="button" id="exploreWildBtn">새 탐색 좌표<span>무작위 좌표를 생성하고 내 거점에 저장</span></button>' +
+        '<button type="button" id="exploreRegisteredBtn">등록 거점 추첨<span>미개척 등록 거점에서 무작위 선택</span></button>' +
+        '<button type="button" id="exploreWildBtn">무작위 좌표<span>좌표를 생성하고 내 거점에 저장</span></button>' +
       '</div>' +
       '<div class="explore-foot">범위 지정 시 현재 기준 위치를 중심으로 탐색합니다. ALL은 등록 전체 또는 기존 전국 산악 탐색 권역을 사용합니다.</div>';
   }
@@ -932,6 +1053,14 @@
       node.textContent = ref ? exploreReferenceText() : '기준 위치 없음 · 범위 탐색은 GPS/TEMP/LAST 필요';
     }
     renderExploreCircle();
+  }
+
+
+  function focusExploredSite(site) {
+    const lat=Number(site?.coords?.[0]),lon=Number(site?.coords?.[1]);
+    if(!Number.isFinite(lat) || !Number.isFinite(lon))return;
+    if(S.state.gps.follow)S.setFollow(false);
+    map.setView([lat,lon],Math.max(14,map.getZoom()),{animate:false});
   }
 
   function bindExplorePanel() {
@@ -956,6 +1085,7 @@
         toast('범위 내 미개척 등록 거점 없음');
         return;
       }
+      focusExploredSite(picked);
       openSiteDetail(picked.id);
     });
 
@@ -976,6 +1106,7 @@
         toast('미개척 좌표 저장 실패');
         return;
       }
+      focusExploredSite(saved);
       openSiteDetail(saved.id);
       toast('미개척 좌표 생성 · 저장');
     });
@@ -1279,6 +1410,7 @@
   });
 
   bindTempGesture();
+  bindMapGestures();
 
   let reticleHudFrame=0;
   map.on('move zoom resize', () => {
