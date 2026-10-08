@@ -399,11 +399,30 @@ const server = http.createServer((req, res) => {
       await page.locator('[data-edit-point="DEST"]').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '목적지 선택');
       assert.equal(await page.locator('#pointAddressInput').count(), 1);
+      await page.locator('#pointRandomRegistered').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(), '계획 편집');
+      const planRegisteredFocused=await page.evaluate(() => {
+        const site=BaselineNavigationUI.getDraft().destination;
+        const center=BaselineApp.map.getCenter();
+        return Math.abs(site.coords[0]-center.lat)<0.00002 && Math.abs(site.coords[1]-center.lng)<0.00002;
+      });
+      assert.equal(planRegisteredFocused,true,'random PLAN registered destination must recenter map');
+      await page.locator('[data-edit-point="DEST"]').click();
+      await page.locator('#pointRandomWild').click();
+      const planWildFocused=await page.evaluate(() => {
+        const site=BaselineNavigationUI.getDraft().destination;
+        const center=BaselineApp.map.getCenter();
+        return Math.abs(site.coords[0]-center.lat)<0.00002 && Math.abs(site.coords[1]-center.lng)<0.00002;
+      });
+      assert.equal(planWildFocused,true,'random PLAN coordinate destination must recenter map');
+      const randomPlanSiteId=await page.evaluate(() => BaselineSites.getUserSites()[0]?.id);
+      await page.locator('[data-edit-point="DEST"]').click();
       await page.locator('#pointAddressInput').fill('서울시청');
       await page.locator('#pointAddressSearch').click();
       await page.locator('[data-address-result="0"]').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '계획 편집');
       assert.equal(await page.evaluate(() => BaselineNavigationUI.getDraft().destination?.source), 'ADDRESS');
+      await page.evaluate(id => BaselineSites.removeUserSite(id), randomPlanSiteId);
 
       await page.locator('#planAddVia').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '경유지 선택');
