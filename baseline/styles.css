@@ -2708,3 +2708,9 @@ body.layer-hide-track .baseline-track-path {
   .navigation-hud .nav-angle-line strong{font-size:18px;}
   .nav-session-controls,.drawing-controls{bottom:calc(var(--bottom-h) + 3px);}
 }
+
+/* Five drawing actions must stay readable on the narrowest handsets. */
+@media (max-width:370px) {
+  .drawing-controls button {font-size:11px;padding-inline:2px;}
+  .nav-session-controls button {font-size:12px;padding-inline:3px;}
+}

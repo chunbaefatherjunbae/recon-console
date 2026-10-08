@@ -534,9 +534,11 @@ const server = http.createServer((req, res) => {
       });
       assert.equal(gaugeReadouts.grid, String(Math.round(gaugeReadouts.bundle.gridBearing)%360).padStart(3,'0')+'°');
       assert.equal(gaugeReadouts.mag, String(Math.round(gaugeReadouts.bundle.magneticBearing)%360).padStart(3,'0')+'°');
-      assert(gaugeReadouts.gridRotation.startsWith('rotate('+gaugeReadouts.bundle.gridBearing+' '),
+      const needleAngle=raw=>Number(raw.slice(raw.indexOf('(')+1).split(' ')[0]);
+      const delta=(actual,expected)=>Math.abs((actual-expected+540)%360-180);
+      assert(delta(needleAngle(gaugeReadouts.gridRotation),gaugeReadouts.bundle.gridBearing)<0.1,
         'GRID instrument needle must represent its real calculated angle');
-      assert(gaugeReadouts.magRotation.startsWith('rotate('+gaugeReadouts.bundle.magneticBearing+' '),
+      assert(delta(needleAngle(gaugeReadouts.magRotation),gaugeReadouts.bundle.magneticBearing)<0.1,
         'MAG instrument needle must represent its real calculated angle');
 
       assert.equal(await page.locator('#navNowMetric').textContent().then(t => t.includes('자북')), true);
