@@ -443,7 +443,8 @@
   function setTempAtReticle() {
     const c = map.getCenter();
     S.setTemp({ lat: c.lat, lon: c.lng });
-    toast('TEMP 지정');
+    if (!$('sheet')?.hidden) closeSheet();
+    toast('임시위치 갱신');
   }
 
   function moveToTemp() {
@@ -683,10 +684,7 @@
 
     const finish = () => {
       clearTimeout(tempHoldTimer);
-      if (!tempHoldTriggered) {
-        if (S.state.temp) openTempDetail();
-        else setTempAtReticle();
-      }
+      if (!tempHoldTriggered) setTempAtReticle();
       tempHoldTriggered = false;
     };
 
@@ -1188,6 +1186,7 @@
   }
 
   function openSheet(panel, custom) {
+    if (S.state.activePanel === 'map-point' && panel !== 'map-point') clearSelectedMapPoint();
     if (sitePlacementActive) {
       sitePlacementActive = false;
       document.body.classList.remove('baseline-site-placement');
@@ -1207,6 +1206,7 @@
 
   function closeSheet() {
     if (S.state.activePanel === 'explore') clearExploreCircle();
+    if (S.state.activePanel === 'map-point') clearSelectedMapPoint();
     $('sheet').hidden = true;
     S.setPanel(null);
     setActiveNav(null);
@@ -1448,6 +1448,12 @@
 
   bindTempGesture();
   bindMapGestures();
+
+  // A tap on open map space dismisses any sheet, without cancelling
+  // navigation, drawing, GPS follow, or site placement.
+  map.on('click', event => {
+    if (!$('sheet')?.hidden) closeSheet();
+  });
 
   let reticleHudFrame=0;
   map.on('move zoom resize', () => {
