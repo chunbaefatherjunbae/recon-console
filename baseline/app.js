@@ -19,6 +19,7 @@
   let tempHoldTimer = null;
   let tempHoldTriggered = false;
   let tempMarker = null;
+  let selectedMapMarker = null;
   let gpsMarker = null;
   let lastMarker = null;
   let activeSiteFilter = 'registered';
@@ -512,11 +513,36 @@
   }
 
 
+  function clearSelectedMapPoint() {
+    if(!selectedMapMarker)return;
+    selectedMapMarker.remove();
+    selectedMapMarker=null;
+  }
+
+  function showSelectedMapPoint(point) {
+    const position=[point.lat,point.lon];
+    if(!selectedMapMarker){
+      const icon=L.divIcon({
+        className:'map-selected-icon',
+        html:'<span class="map-selected-reticle" aria-hidden="true"><i></i></span><span class="map-selected-caption">선택</span>',
+        iconSize:[32,32],
+        iconAnchor:[16,16]
+      });
+      selectedMapMarker=L.marker(position,{
+        icon,interactive:true,keyboard:true,zIndexOffset:650
+      }).addTo(map);
+      selectedMapMarker.on('click',()=>openMapPointCard(selectedMapMarker.getLatLng()));
+    }else{
+      selectedMapMarker.setLatLng(position);
+    }
+  }
+
   function openMapPointCard(latlng) {
     const lat = Number(latlng?.lat), lon = Number(latlng?.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
         Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
     const point = { lat, lon };
+    showSelectedMapPoint(point);
     const html =
       '<div class="site-detail">' +
         '<div class="site-detail-head"><small>지도에서 선택한 위치</small><strong>위치 좌표</strong></div>' +
@@ -530,11 +556,15 @@
             '<button type="button" id="mapPointCenter">지도 이동</button>' +
             '<button type="button" id="mapPointCopy">좌표 복사</button>' +
           '</div>' +
+          '<div class="site-actions-manage">' +
+            '<button type="button" id="mapPointClear">선택 해제</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
     openSheet('map-point', { title:'위치 정보', html });
     $('mapPointTemp')?.addEventListener('click', () => {
       S.setTemp(point);
+      clearSelectedMapPoint();
       closeSheet();
       toast('임시위치 지정');
     });
@@ -542,6 +572,11 @@
       if (S.state.gps.follow) S.setFollow(false);
       map.setView([lat, lon], map.getZoom(), { animate:false });
       closeSheet();
+    });
+    $('mapPointClear')?.addEventListener('click', () => {
+      clearSelectedMapPoint();
+      closeSheet();
+      toast('선택 지점 해제');
     });
     $('mapPointCopy')?.addEventListener('click', async () => {
       try {
@@ -610,7 +645,8 @@
         const stamp=now;
         setTimeout(()=>{
           if(!isFreeMap() || nativeDoubleClickAt>=stamp-60)return;
-          map.setZoomAround([p.x,p.y],Math.min(map.getMaxZoom(),map.getZoom()+1));
+          // L.point is essential: [x,y] is interpreted as LatLng by setZoomAround.
+          map.setZoomAround(L.point(p.x,p.y),Math.min(map.getMaxZoom(),map.getZoom()+1));
         },45);
       } else lastTap={at:now,x:p.x,y:p.y};
     },{passive:true});
