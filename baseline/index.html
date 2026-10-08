@@ -51,7 +51,7 @@
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.5" class="follow-core"/></svg>
         </span>
       </button>
-      <button class="quick-btn" id="tempBtn" type="button" aria-label="임시위치. 없으면 지정, 있으면 정보 열기, 길게 누르면 이동" aria-pressed="false" title="TEMP">
+      <button class="quick-btn" id="tempBtn" type="button" aria-label="임시위치 갱신. 길게 누르면 기존 임시위치로 지도 이동" aria-pressed="false" title="TEMP">
         <span aria-hidden="true">◇</span>
       </button>
     </nav>
@@ -72,10 +72,11 @@
     <div class="drawing-controls" id="drawingControls" hidden>
       <button type="button" data-draw-kind="ROUTE" class="active">경로</button>
       <button type="button" data-draw-kind="MARK">표식</button>
+      <button type="button" data-draw-kind="ERASE">지우개</button>
       <button type="button" id="drawUndoBtn">되돌리기</button>
       <button type="button" id="drawDoneBtn">완료</button>
     </div>
-    <div class="drawing-capture" id="drawingCapture" hidden aria-label="드로잉 영역"></div>
+    <div class="drawing-capture" id="drawingCapture" hidden aria-label="드로잉 영역"><span class="drawing-eraser-cursor" id="drawingEraserCursor" hidden aria-hidden="true"></span></div>
 
     <div class="scale-hud" id="scaleHud" aria-hidden="true">
       <span class="scale-line" id="scaleLine"></span>
