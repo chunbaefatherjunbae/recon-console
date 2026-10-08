@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#020904">
+  <title>RECON CONSOLE // BASELINE</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="../icons/icon-192.png">
+  <link rel="icon" type="image/png" href="../icons/icon-192.png">
+  <link rel="stylesheet" href="../vendor/leaflet-1.9.4.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body class="theme-nvg-green">
+  <main id="app" aria-label="RECON CONSOLE BASELINE">
+    <div id="map" aria-label="지도"></div>
+    <div class="map-tech-grid" aria-hidden="true"></div>
+
+    <section class="position-hud" id="positionHud" aria-live="polite">
+      <strong id="positionCoord">POS  --</strong>
+      <strong class="reticle-coordinate" id="reticleCoord">RET  --</strong>
+      <div class="position-status-row">
+        <span id="positionMeta">NO REFERENCE</span>
+        <span class="map-mode-status" id="mapModeStatus">MAP · ONLINE</span>
+      </div>
+    </section>
+
+    <nav class="quick-stack" aria-label="지도 빠른 조작">
+      <button class="quick-btn" id="searchBtn" type="button" aria-label="검색" title="검색">
+        <span aria-hidden="true">⌕</span>
+      </button>
+      <button class="quick-btn" id="settingsBtn" type="button" aria-label="설정" title="설정">
+        <span aria-hidden="true">⋮</span>
+      </button>
+      <button class="quick-btn layer-btn" id="layerBtn" type="button" aria-label="레이어" aria-pressed="false" title="레이어">
+        <span class="layer-glyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3 3.5 8 12 13l8.5-5L12 3Z"/><path d="m5.5 12 6.5 3.8 6.5-3.8"/><path d="m5.5 16 6.5 3.8 6.5-3.8"/></svg>
+        </span>
+      </button>
+      <button class="quick-btn" id="gpsBtn" type="button" aria-label="GPS 켜기/끄기" aria-pressed="false" title="GPS">
+        <span class="btn-label">GPS</span>
+      </button>
+      <button class="quick-btn follow-btn" id="followBtn" type="button" aria-label="센터 및 트래킹" aria-pressed="false" title="센터 및 트래킹">
+        <span id="followGlyph" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.5" class="follow-core"/></svg>
+        </span>
+      </button>
+      <button class="quick-btn" id="tempBtn" type="button" aria-label="임시 좌표. 짧게 눌러 지정, 길게 눌러 이동" aria-pressed="false" title="TEMP">
+        <span aria-hidden="true">◇</span>
+      </button>
+    </nav>
+
+    <div class="reticle" aria-hidden="true">
+      <i class="reticle-h"></i>
+      <i class="reticle-v"></i>
+      <i class="reticle-core"></i>
+    </div>
+
+    <button class="nav-route-summary" id="navRouteSummary" type="button" hidden aria-label="항법 경로 수정">
+      <span id="navRouteText">출발 → 목적지</span><b>⌄</b>
+    </button>
+
+    <section class="navigation-hud" id="navigationHud" hidden aria-live="polite">
+      <div><small>현재 → 목적지</small><strong id="navNowMetric">--</strong></div>
+      <div><small>출발 → 목적지</small><strong id="navStartMetric">--</strong></div>
+      <div class="navigation-hud-sub" id="navDeclination">DECL --</div>
+      <div class="navigation-timer" id="navTimer" hidden>00:00:00</div>
+    </section>
+
+    <div class="nav-session-controls" id="navSessionControls" hidden></div>
+
+    <div class="drawing-controls" id="drawingControls" hidden>
+      <button type="button" data-draw-kind="ROUTE" class="active">경로</button>
+      <button type="button" data-draw-kind="MARK">표식</button>
+      <button type="button" id="drawUndoBtn">되돌리기</button>
+      <button type="button" id="drawDoneBtn">완료</button>
+    </div>
+    <div class="drawing-capture" id="drawingCapture" hidden aria-label="드로잉 영역"></div>
+
+    <div class="scale-hud" id="scaleHud" aria-hidden="true">
+      <span class="scale-line" id="scaleLine"></span>
+      <strong id="scaleText">--</strong>
+    </div>
+
+    <section class="sheet" id="sheet" hidden aria-modal="true" role="dialog">
+      <header class="sheet-head">
+        <div>
+          <small>BASELINE</small>
+          <strong id="sheetTitle">패널</strong>
+        </div>
+        <button id="sheetClose" type="button" aria-label="닫기">×</button>
+      </header>
+      <div class="sheet-body" id="sheetBody"></div>
+    </section>
+
+    <nav class="bottom-nav" aria-label="주요 기능">
+      <button type="button" data-panel="sites">거점</button>
+      <button type="button" data-panel="explore">탐색</button>
+      <button type="button" data-panel="plans">계획</button>
+      <button type="button" data-panel="records">기록</button>
+    </nav>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </main>
+
+  <script src="../vendor/leaflet-1.9.4.js"></script>
+  <script src="../vendor/mgrs-1.0.0.js"></script>
+  <script src="./state.js"></script>
+  <script src="./data/sites.js"></script>
+  <script src="./site-store.js"></script>
+  <script src="./explore-core.js"></script>
+  <script src="./navigation-core.js"></script>
+  <script src="./plan-store.js"></script>
+  <script src="./record-store.js"></script>
+  <script src="./app.js"></script>
+  <script src="./offline-runtime.js"></script>
+  <script src="./lite-map.js"></script>
+  <script src="./navigation-ui.js"></script>
+</body>
+</html>
