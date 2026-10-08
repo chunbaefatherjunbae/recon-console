@@ -714,6 +714,79 @@ const server = http.createServer((req, res) => {
         await page.screenshot({ path:`ui-results-baseline/${name}-site-actions-${width}.png`, fullPage:true });
         await page.locator('#sheetClose').click();
         await page.screenshot({ path:`ui-results-baseline/${name}-${width}.png`, fullPage:true });
+
+        // Do not equate hiding overflow with fixing it. Visit each major
+        // function group at phone/tablet widths and measure actual line breaks.
+        const auditText = async panel => {
+          const issues=await page.evaluate(() => {
+            const failures=[];
+            const sheet=document.getElementById('sheet');
+            const body=document.getElementById('sheetBody');
+            if(!sheet.hidden && body.scrollWidth>body.clientWidth+2){
+              failures.push('sheet horizontal overflow: ' + body.scrollWidth + '/' + body.clientWidth);
+            }
+            const items=[...document.querySelectorAll(
+              '#sheet button, .bottom-nav button, .nav-session-controls button, '+
+              '.drawing-controls button, .site-placement-bar button'
+            )];
+            for(const el of items){
+              if(!el.getClientRects().length || el.closest('[hidden]'))continue;
+              if(el.children.length>0)continue; // descriptions in cards are deliberately multiline
+              const txt=el.textContent.trim();
+              if(!txt)continue;
+              if(el.scrollWidth>el.clientWidth+2){
+                failures.push('horizontal clipping: '+txt+' / '+el.className);
+              }
+              const node=[...el.childNodes].find(x=>x.nodeType===Node.TEXT_NODE && x.textContent.trim());
+              if(!node)continue;
+              const range=document.createRange();
+              range.selectNodeContents(node);
+              const tops=[...range.getClientRects()].filter(rect=>rect.width>0)
+                .map(rect=>Math.round(rect.top));
+              if(new Set(tops).size>1){
+                failures.push('broken button line: '+txt+' / '+el.className);
+              }
+            }
+            return failures;
+          });
+          assert.deepEqual(issues,[],name+' '+width+' '+panel+' text audit: '+JSON.stringify(issues));
+        };
+        await page.locator('.bottom-nav button[data-panel="sites"]').click();
+        await auditText('sites-list');
+        await page.locator('#siteAddBtn').click();
+        await auditText('site-add');
+        await page.locator('[data-site-add-source="MAP"]').click();
+        assert.equal(await page.locator('#sitePlacementBar').isVisible(),true);
+        await auditText('map-placement');
+        await page.locator('#sitePlacementConfirm').click();
+        await auditText('site-form');
+        await page.locator('#sheetClose').click();
+
+        await page.locator('.bottom-nav button[data-panel="explore"]').click();
+        await auditText('explore');
+        await page.locator('#sheetClose').click();
+        await page.locator('.bottom-nav button[data-panel="plans"]').click();
+        await auditText('plans');
+        if(await page.locator('#planContinueBtn').count()){
+          await page.locator('#planContinueBtn').click();
+          await auditText('plan-editor');
+          await page.locator('[data-edit-point="DEST"]').click();
+          await auditText('point-picker');
+          await page.locator('#pointPickerBack').click();
+        }
+        await page.locator('#sheetClose').click();
+        await page.locator('.bottom-nav button[data-panel="records"]').click();
+        await auditText('records');
+        await page.locator('#sheetClose').click();
+        await page.locator('#settingsBtn').click();
+        await auditText('settings');
+        await page.locator('#sheetClose').click();
+        await page.locator('#layerBtn').click();
+        await auditText('layers');
+        await page.locator('#sheetClose').click();
+        await page.locator('#searchBtn').click();
+        await auditText('search');
+        await page.locator('#sheetClose').click();
       }
 
       assert.deepEqual(errors, []);
