@@ -17,7 +17,7 @@
   const processedTerrain=new Map();
   const TERRAIN_MEMORY_LIMIT=48;
   const DATA_URL='./data/lite-map-osm.js';
-  let requestedMode=VALID_MODES.has(localStorage.getItem(MODE_KEY)) ? localStorage.getItem(MODE_KEY) : 'online';
+  let requestedMode=VALID_MODES.has(localStorage.getItem(MODE_KEY)) ? localStorage.getItem(MODE_KEY) : 'auto';
   let effectiveMode='online';
   let vectorReady=false;
   let secondaryRoadReady=false;
