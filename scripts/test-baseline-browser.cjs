@@ -580,7 +580,7 @@ const server = http.createServer((req, res) => {
           const r=id=>document.getElementById(id).getBoundingClientRect();
           const pos=r('positionHud'),nav=r('navigationHud'),
             summary=r('navRouteSummary'),quick=r('tempBtn'),controls=r('navSessionControls'),
-            ret=r('reticle'),mapBox=r('map');
+            ret=document.querySelector('.reticle').getBoundingClientRect(),mapBox=r('map');
           const all=[...document.querySelectorAll('.quick-btn')].map(x=>x.getBoundingClientRect());
           const columns=new Set(all.map(x=>Math.round(x.left))).size;
           const c=BaselineApp.map.getCenter();
