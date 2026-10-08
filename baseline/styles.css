@@ -118,9 +118,9 @@ button, input { font:inherit; }
 
 .reticle {
   position:absolute;
-  z-index:420;
+  z-index:720;
   left:50%;
-  top:calc(50% - 30px);
+  top:50%;
   width:32px;
   height:32px;
   transform:translate(-50%,-50%);

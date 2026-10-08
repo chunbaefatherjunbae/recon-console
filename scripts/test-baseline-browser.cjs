@@ -106,6 +106,16 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('.site-map-marker-wrap').count(), 24);
       assert.equal(await page.locator('.marker-registered').count(), 24);
       assert.equal(await page.locator('.reticle').count(), 1);
+      assert.equal(await page.evaluate(() => BaselineApp.map.doubleClickZoom.enabled()), true, 'double-click/double-tap map zoom must be enabled');
+      const reticleOffset = await page.evaluate(() => {
+        const mapBox = document.getElementById('map').getBoundingClientRect();
+        const target = document.querySelector('.reticle').getBoundingClientRect();
+        return {
+          x: (target.left + target.width / 2) - (mapBox.left + mapBox.width / 2),
+          y: (target.top + target.height / 2) - (mapBox.top + mapBox.height / 2)
+        };
+      });
+      assert(Math.abs(reticleOffset.x) <= 1 && Math.abs(reticleOffset.y) <= 1, 'reticle must coincide with Leaflet map center including iPhone safe area');
       assert.equal(await page.locator('[class*="corner"]').count(), 0);
       const attributionText = await page.locator('.leaflet-control-attribution').textContent();
       assert.equal(attributionText.includes('Leaflet'), false, 'Leaflet prefix should be removed to reduce clutter');
@@ -140,6 +150,10 @@ const server = http.createServer((req, res) => {
       await page.evaluate(() => BaselineLiteMap.setMode('online'));
       await page.waitForFunction(() => BaselineLiteMap.status().effective === 'online');
       assert.equal(await page.locator('#mapModeStatus').textContent(), 'MAP · ONLINE');
+      assert.equal(await page.evaluate(() => localStorage.getItem('tr_baseline_map_mode_v1')), 'online', 'chosen online map must persist');
+      await page.reload({ waitUntil:'domcontentloaded' });
+      await page.waitForFunction(() => window.BaselineApp?.version === 'R0.1-BASELINE' && window.BaselineLiteMap?.status().requested === 'online');
+      assert.equal(await page.evaluate(() => BaselineLiteMap.status().effective), 'online', 'reloaded manual ONLINE mode must not reset to AUTO');
 
       await page.locator('#tempBtn').click();
       let temp = await page.evaluate(() => BaselineState.state.temp);
@@ -147,6 +161,15 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.evaluate(() => BaselineState.reference()?.type), 'TEMP');
       assert(await page.locator('#tempBtn').evaluate(el => el.classList.contains('active')));
       assert.equal(await page.locator('.baseline-marker.temp').count(), 1);
+      await page.locator('.baseline-marker.temp').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(), '임시위치', 'tapping TEMP marker must open position card');
+      assert.equal(await page.locator('#tempCopyCoord').count(), 1);
+      assert.equal(await page.locator('#tempMoveReticle').count(), 1);
+      assert.equal(await page.locator('#tempClear').count(), 1);
+      await page.locator('#sheetClose').click();
+      await page.locator('#tempBtn').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(), '임시위치', 'TEMP control must open saved position card');
+      await page.locator('#sheetClose').click();
 
       await page.evaluate(() => {
         const t = BaselineState.state.temp;

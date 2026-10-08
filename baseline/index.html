@@ -13,7 +13,13 @@
 </head>
 <body class="theme-nvg-green">
   <main id="app" aria-label="RECON CONSOLE BASELINE">
-    <div id="map" aria-label="지도"></div>
+    <div id="map" aria-label="지도">
+      <div class="reticle" aria-hidden="true">
+        <i class="reticle-h"></i>
+        <i class="reticle-v"></i>
+        <i class="reticle-core"></i>
+      </div>
+    </div>
     <div class="map-tech-grid" aria-hidden="true"></div>
 
     <section class="position-hud" id="positionHud" aria-live="polite">
@@ -45,16 +51,10 @@
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="1.5" class="follow-core"/></svg>
         </span>
       </button>
-      <button class="quick-btn" id="tempBtn" type="button" aria-label="임시 좌표. 짧게 눌러 지정, 길게 눌러 이동" aria-pressed="false" title="TEMP">
+      <button class="quick-btn" id="tempBtn" type="button" aria-label="임시위치. 없으면 지정, 있으면 정보 열기, 길게 누르면 이동" aria-pressed="false" title="TEMP">
         <span aria-hidden="true">◇</span>
       </button>
     </nav>
-
-    <div class="reticle" aria-hidden="true">
-      <i class="reticle-h"></i>
-      <i class="reticle-v"></i>
-      <i class="reticle-core"></i>
-    </div>
 
     <button class="nav-route-summary" id="navRouteSummary" type="button" hidden aria-label="항법 경로 수정">
       <span id="navRouteText">출발 → 목적지</span><b>⌄</b>
