@@ -17,13 +17,20 @@
   const processedTerrain=new Map();
   const TERRAIN_MEMORY_LIMIT=48;
   const DATA_URL='./data/lite-map-osm.js';
-  let requestedMode=VALID_MODES.has(localStorage.getItem(MODE_KEY)) ? localStorage.getItem(MODE_KEY) : 'auto';
+  let requestedMode=VALID_MODES.has(localStorage.getItem(MODE_KEY)) ? localStorage.getItem(MODE_KEY) : 'online';
   let effectiveMode='online';
   let vectorReady=false;
   let secondaryRoadReady=false;
   let secondaryRoadScheduled=false;
   let onlineTileErrors=[];
   let fallbackReason=null;
+  let autoFallbackTimer=null;
+  let lastOnlineTileSuccessAt=Date.now();
+
+  function cancelAutoFallback(){
+    if(autoFallbackTimer!==null) clearTimeout(autoFallbackTimer);
+    autoFallbackTimer=null;
+  }
 
   function clamp(v,min,max){return Math.max(min,Math.min(max,v));}
 
@@ -432,6 +439,7 @@
 
   function applyMode(reason='apply'){
     const next=desiredEffective();
+    if(next!=='online') cancelAutoFallback();
     effectiveMode=next;
     if(next==='lite'){
       map.attributionControl?.addAttribution(LITE_VECTOR_ATTR);
@@ -467,6 +475,8 @@
     const clean=VALID_MODES.has(mode)?mode:'auto';
     requestedMode=clean;
     fallbackReason=null;
+    onlineTileErrors=[];
+    cancelAutoFallback();
     localStorage.setItem(MODE_KEY,clean);
     applyMode('set-mode');
     return status();
@@ -494,27 +504,45 @@
   }
 
   function noteOnlineTileError(){
+    if(requestedMode!=='auto'||effectiveMode!=='online')return;
     const now=Date.now();
     onlineTileErrors=onlineTileErrors.filter(t=>now-t<5000);
     onlineTileErrors.push(now);
-    if(requestedMode==='auto'&&onlineTileErrors.length>=3){
+    if(onlineTileErrors.length<3)return;
+
+    if(!navigator.onLine){
       fallbackReason='tile-errors';
       applyMode('tile-errors');
+      return;
     }
+    // Transient tile errors during zoom or delayed downloads are not
+    // evidence that the whole online basemap is unavailable.
+    if(autoFallbackTimer!==null)return;
+    autoFallbackTimer=setTimeout(()=>{
+      autoFallbackTimer=null;
+      if(requestedMode!=='auto'||effectiveMode!=='online')return;
+      if(Date.now()-lastOnlineTileSuccessAt<7000)return;
+      fallbackReason='tile-errors';
+      applyMode('tile-errors');
+    },7000);
   }
 
   App.topoLayer.on('tileerror',noteOnlineTileError);
   App.topoLayer.on('tileload',()=>{
-    if(requestedMode==='auto'&&fallbackReason==='tile-errors'){
-      onlineTileErrors=[];
-    }
+    lastOnlineTileSuccessAt=Date.now();
+    onlineTileErrors=[];
+    cancelAutoFallback();
   });
 
   window.addEventListener('online',()=>{
+    cancelAutoFallback();
+    onlineTileErrors=[];
     fallbackReason=null;
     applyMode('online');
   });
   window.addEventListener('offline',()=>{
+    cancelAutoFallback();
+    onlineTileErrors=[];
     fallbackReason=null;
     applyMode('offline');
     if(requestedMode==='auto'&&effectiveMode==='online'){
