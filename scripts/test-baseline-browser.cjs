@@ -225,7 +225,7 @@ const server = http.createServer((req, res) => {
       const pinned=await page.evaluate(() => BaselineState.state.temp);
       assert(Math.abs(pinned.lat-mapTouch.lat)<0.000002 && Math.abs(pinned.lon-mapTouch.lon)<0.000002);
       await page.locator('#map').dispatchEvent('pointerup',{
-        pointerId:771,pointerType:'touch',isPrimary:true,button:0,
+        pointerId:773,pointerType:'touch',isPrimary:true,button:0,
         clientX:mapTouch.x,clientY:mapTouch.y
       });
       await page.locator('#map').dispatchEvent('pointerdown',{
