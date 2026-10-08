@@ -31,6 +31,9 @@
   let pointerState = new Map();
   let gesture = null;
   let gestureUntilClear = false;
+  let eraserTrail = [];
+  let drawUndoHistory = [];
+  let originalZoomSnap = null;
   let timerHandle = null;
   let pointAddressSearchToken = 0;
 
@@ -332,6 +335,7 @@
 
   function newDraft() {
     planViewActive = true;
+    drawUndoHistory = [];
     draft = Plans.createDraft(referencePoint('START'));
     renderPlanMap();
     renderHud();
@@ -345,6 +349,7 @@
       return;
     }
     planViewActive = true;
+    drawUndoHistory = [];
     draft = Plans.normalize(plan);
     renderPlanMap();
     renderHud();
@@ -998,7 +1003,10 @@
       return;
     }
     const seg=Plans.drawing({kind:drawKind,points:currentStroke});
-    if (seg) draft.drawings.push(seg);
+    if (seg) {
+      drawUndoHistory.push(clone(draft.drawings));
+      draft.drawings.push(seg);
+    }
     currentStroke=null;
     if (liveLine) { liveLine.remove(); liveLine=null; }
     routeChanged('DRAWING');
@@ -1009,6 +1017,76 @@
   }
   function distance(a,b) {
     return Math.hypot(a.x-b.x,a.y-b.y);
+  }
+
+
+  // Erase only the portions of a polyline inside the finger's screen-space
+  // brush. Remnants are ordinary DRAW segments and survive plan save/import.
+  function eraseByTrail(trail) {
+    if (!draft || !trail.length || !draft.drawings.length) return;
+    const brush=14;
+    const distanceToSegment=(p,a,b)=>{
+      const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+      const t=den?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/den)):0;
+      return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
+    };
+    const nearEraser=p=>{
+      if(trail.length===1)return distance(p,trail[0])<=brush;
+      for(let i=1;i<trail.length;i++)
+        if(distanceToSegment(p,trail[i-1],trail[i])<=brush)return true;
+      return false;
+    };
+    let modified=false;
+    const kept=[];
+    draft.drawings.forEach(seg=>{
+      const pix=seg.points.map(p=>map.latLngToContainerPoint(p));
+      const sampled=[];
+      for(let i=1;i<pix.length;i++){
+        const a=pix[i-1],b=pix[i];
+        const steps=Math.max(1,Math.ceil(distance(a,b)/4));
+        for(let k=(i===1?0:1);k<=steps;k++){
+          const t=k/steps;
+          sampled.push(L.point(a.x+(b.x-a.x)*t,a.y+(b.y-a.y)*t));
+        }
+      }
+      if(!sampled.some(nearEraser)){ kept.push(seg);return; }
+      modified=true;
+      let part=[];
+      const flush=()=>{
+        if(part.length>1){
+          const coords=part.map(pt=>{
+            const pos=map.containerPointToLatLng(pt);
+            return [pos.lat,pos.lng];
+          });
+          const piece=Plans.drawing({kind:seg.kind,points:coords});
+          if(piece) kept.push(piece);
+        }
+        part=[];
+      };
+      sampled.forEach(pt=>{
+        if(nearEraser(pt))flush();
+        else part.push(pt);
+      });
+      flush();
+    });
+    if(!modified)return;
+    drawUndoHistory.push(clone(draft.drawings));
+    draft.drawings=kept;
+    routeChanged('DRAW_ERASE');
+  }
+
+  function drawPixel(event) {
+    const rect=$('drawingCapture').getBoundingClientRect();
+    return {x:event.clientX-rect.left,y:event.clientY-rect.top};
+  }
+  function updateEraserCursor(event) {
+    const node=$('drawingEraserCursor');
+    if(!node)return;
+    if(!event || drawKind!=='ERASE'){node.hidden=true;return;}
+    const p=drawPixel(event);
+    node.hidden=false;
+    node.style.left=p.x+'px';
+    node.style.top=p.y+'px';
   }
 
   function bindDrawingCapture() {
@@ -1022,15 +1100,23 @@
       pointerState.set(event.pointerId,{x:event.clientX,y:event.clientY});
 
       if (pointerState.size === 1 && !gestureUntilClear) {
-        const ll=drawLatLng(event);
-        currentStroke=[[ll.lat,ll.lng]];
-        renderLiveStroke();
+        if (drawKind==='ERASE') {
+          eraserTrail=[drawPixel(event)];
+          updateEraserCursor(event);
+          currentStroke=null;
+        } else {
+          const ll=drawLatLng(event);
+          currentStroke=[[ll.lat,ll.lng]];
+          renderLiveStroke();
+        }
       } else if (pointerState.size >= 2) {
+        eraserTrail=[];
+        updateEraserCursor(null);
         currentStroke=null;
         if (liveLine) { liveLine.remove(); liveLine=null; }
         gestureUntilClear=true;
         const pts=[...pointerState.values()].slice(0,2);
-        gesture={mid:midpoint(pts[0],pts[1]),dist:Math.max(1,distance(pts[0],pts[1])),zoom:map.getZoom()};
+        gesture={mid:midpoint(pts[0],pts[1]),startDist:Math.max(1,distance(pts[0],pts[1])),zoom:map.getZoom()};
       }
       event.preventDefault();
     },{passive:false});
@@ -1045,16 +1131,21 @@
         const nextDist=Math.max(1,distance(pts[0],pts[1]));
         if (gesture) {
           map.panBy([gesture.mid.x-nextMid.x,gesture.mid.y-nextMid.y],{animate:false});
-          const ratio=nextDist/gesture.dist;
-          if (ratio > 1.08 || ratio < .92) {
-            const rect=capture.getBoundingClientRect();
-            const point=L.point(nextMid.x-rect.left,nextMid.y-rect.top);
-            const zoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),map.getZoom()+Math.log2(ratio)));
-            map.setZoomAround(point,zoom,{animate:false});
-            gesture.dist=nextDist;
-          }
+          const rect=capture.getBoundingClientRect();
+          const anchor=L.point(nextMid.x-rect.left,nextMid.y-rect.top);
+          // Ratio must be measured against the initial spread. Resetting
+          // it every move loses fractional zoom changes.
+          const zoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
+            gesture.zoom+Math.log2(nextDist/gesture.startDist)));
+          if(Math.abs(zoom-map.getZoom())>=.12)
+            map.setZoomAround(anchor,zoom,{animate:false});
           gesture.mid=nextMid;
         }
+      } else if (!gestureUntilClear && drawKind==='ERASE') {
+        const next=drawPixel(event);
+        if(!eraserTrail.length || distance(next,eraserTrail[eraserTrail.length-1])>3)
+          eraserTrail.push(next);
+        updateEraserCursor(event);
       } else if (!gestureUntilClear && currentStroke) {
         const ll=drawLatLng(event);
         const point=[ll.lat,ll.lng];
@@ -1070,7 +1161,14 @@
     const end=event => {
       if (!pointerState.has(event.pointerId)) return;
       pointerState.delete(event.pointerId);
-      if (!gestureUntilClear && pointerState.size === 0) commitStroke();
+      if (!gestureUntilClear && pointerState.size === 0) {
+        if(drawKind==='ERASE')eraseByTrail(eraserTrail);
+        else commitStroke();
+      }
+      if (pointerState.size === 0) {
+        eraserTrail=[];
+        updateEraserCursor(null);
+      }
       if (gestureUntilClear && pointerState.size === 0) {
         gestureUntilClear=false;
         gesture=null;
@@ -1086,13 +1184,15 @@
   function enterDrawing() {
     if (!draft) return;
     drawingMode=true;
+    originalZoomSnap=map.options.zoomSnap;
+    map.options.zoomSnap=.25;
     $('drawingCapture').hidden=false;
     $('drawingControls').hidden=false;
     $('navSessionControls').hidden=true;
     document.body.classList.add('baseline-drawing');
     bindDrawingCapture();
     syncDrawButtons();
-    toast('한 손가락 그리기 · 두 손가락 지도 이동');
+    toast('한 손가락 그리기·지우기 · 두 손가락 확대·이동');
   }
 
   function exitDrawing() {
@@ -1101,8 +1201,11 @@
     drawingMode=false;
     pointerState.clear();
     currentStroke=null;
+    eraserTrail=[];
+    updateEraserCursor(null);
     gesture=null;
     gestureUntilClear=false;
+    if(originalZoomSnap!==null){map.options.zoomSnap=originalZoomSnap;originalZoomSnap=null;}
     if (liveLine) { liveLine.remove(); liveLine=null; }
     $('drawingCapture').hidden=true;
     $('drawingControls').hidden=true;
@@ -1117,12 +1220,19 @@
   }
 
   document.querySelectorAll('[data-draw-kind]').forEach(btn => btn.addEventListener('click',() => {
-    drawKind=btn.dataset.drawKind === 'MARK' ? 'MARK' : 'ROUTE';
+    if(currentStroke?.length>=2)commitStroke();
+    currentStroke=null;
+    eraserTrail=[];
+    updateEraserCursor(null);
+    const kind=btn.dataset.drawKind;
+    drawKind=kind==='MARK'?'MARK':kind==='ERASE'?'ERASE':'ROUTE';
     syncDrawButtons();
   }));
   $('drawUndoBtn')?.addEventListener('click',() => {
-    if (!draft?.drawings.length) return toast('되돌릴 드로잉 없음');
-    draft.drawings.pop();
+    if (!draft) return toast('되돌릴 드로잉 없음');
+    if(drawUndoHistory.length)draft.drawings=drawUndoHistory.pop();
+    else if(draft.drawings.length)draft.drawings.pop();
+    else return toast('되돌릴 드로잉 없음');
     routeChanged('DRAW_UNDO');
   });
   $('drawDoneBtn')?.addEventListener('click',exitDrawing);
@@ -1154,6 +1264,7 @@
     if (!active) return false;
     planViewActive=true;
     draft=Plans.normalize(active.finalPlan || active.initialPlan || {});
+    drawUndoHistory=[];
     renderPlanMap();
     renderActiveTrack();
     renderHud();
