@@ -60,11 +60,53 @@
       <span id="navRouteText">출발 → 목적지</span><b>⌄</b>
     </button>
 
-    <section class="navigation-hud" id="navigationHud" hidden aria-live="polite">
-      <div><small>현재 → 목적지</small><strong id="navNowMetric">--</strong></div>
-      <div><small>출발 → 목적지</small><strong id="navStartMetric">--</strong></div>
-      <div class="navigation-hud-sub" id="navDeclination">DECL --</div>
-      <div class="navigation-timer" id="navTimer" hidden>00:00:00</div>
+    <section class="navigation-hud" id="navigationHud" hidden aria-live="polite" aria-label="계획 및 항법 계측 정보">
+      <div class="nav-instrument-header">
+        <small id="navModeLabel">PLAN / TARGET</small>
+        <strong id="navTargetName">목적지</strong>
+      </div>
+      <div class="nav-instrument-main">
+        <div class="nav-distance-readout">
+          <small id="navDistanceLabel">직선 거리 · DIST</small>
+          <div class="nav-distance-line">
+            <strong id="navDistanceValue">--</strong><span id="navDistanceUnit">km</span>
+          </div>
+        </div>
+        <div class="nav-angle-pair">
+          <div class="nav-angle-readout">
+            <small>도북 · GRID</small>
+            <div class="nav-angle-line">
+              <strong id="navGridBearing">--</strong>
+              <svg viewBox="0 0 44 44" class="nav-bearing-gauge" role="img" aria-label="도북 방위각 계기">
+                <circle cx="22" cy="22" r="16" class="nav-gauge-ring"/>
+                <path d="M22 3v5 M22 36v5 M3 22h5 M36 22h5" class="nav-gauge-ticks"/>
+                <path id="navGridNeedle" d="M22 8L27 26L22 22L17 26Z" class="nav-gauge-needle"/>
+                <circle cx="22" cy="22" r="2" class="nav-gauge-center"/>
+              </svg>
+            </div>
+          </div>
+          <div class="nav-angle-readout">
+            <small>자북 · MAG</small>
+            <div class="nav-angle-line">
+              <strong id="navMagBearing">--</strong>
+              <svg viewBox="0 0 44 44" class="nav-bearing-gauge" role="img" aria-label="자북 방위각 계기">
+                <circle cx="22" cy="22" r="16" class="nav-gauge-ring"/>
+                <path d="M22 3v5 M22 36v5 M3 22h5 M36 22h5" class="nav-gauge-ticks"/>
+                <path id="navMagNeedle" d="M22 8L27 26L22 22L17 26Z" class="nav-gauge-needle"/>
+                <circle cx="22" cy="22" r="2" class="nav-gauge-center"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="nav-instrument-secondary">
+        <span id="navNowMetric">--</span>
+        <span id="navStartMetric">--</span>
+      </div>
+      <div class="nav-instrument-footer">
+        <span class="navigation-hud-sub" id="navDeclination">도자각 --</span>
+        <span class="navigation-timer" id="navTimer" hidden>00:00:00</span>
+      </div>
     </section>
 
     <div class="nav-session-controls" id="navSessionControls" hidden></div>
