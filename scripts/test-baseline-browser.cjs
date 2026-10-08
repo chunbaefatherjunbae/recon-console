@@ -190,7 +190,37 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#mapPointTemp').count(), 1);
       assert.equal(await page.locator('#mapPointCenter').count(), 1);
       assert.equal(await page.locator('#mapPointCopy').count(), 1);
+      assert.equal(await page.locator('#mapPointClear').count(), 1);
+      assert.equal(await page.locator('.map-selected-icon').count(), 1,'selected map point must have its own marker');
+      assert.equal(await page.locator('.map-selected-caption').textContent(),'선택');
+      const selectionCoords=await page.evaluate(() => {
+        const item=document.querySelector('.map-selected-icon');
+        const box=item.getBoundingClientRect();
+        const mapBox=BaselineApp.map.getContainer().getBoundingClientRect();
+        return {x:box.left+box.width/2,y:box.top+box.height/2,
+          markerIsVisible:getComputedStyle(item).display!=='none',
+          mapWidth:mapBox.width};
+      });
+      assert(Math.hypot(selectionCoords.x-mapTouch.x,selectionCoords.y-mapTouch.y)<3,'selection marker must be drawn at held pixel');
+      await page.locator('#sheetClose').click();
+      assert.equal(await page.locator('.map-selected-icon').count(),1,'unsaved selection remains visible after card closes');
+      await page.locator('.map-selected-icon').click();
+      assert.equal(await page.locator('#sheetTitle').textContent(),'위치 정보','selected marker must reopen location card');
+      await page.locator('#mapPointClear').click();
+      assert.equal(await page.locator('.map-selected-icon').count(),0,'dismiss selection removes marker');
+
+      await page.locator('#map').dispatchEvent('pointerup',{
+        pointerId:771,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x,clientY:mapTouch.y
+      });
+      await page.locator('#map').dispatchEvent('pointerdown',{
+        pointerId:773,pointerType:'touch',isPrimary:true,button:0,
+        clientX:mapTouch.x,clientY:mapTouch.y
+      });
+      await page.waitForTimeout(700);
+      assert.equal(await page.locator('.map-selected-icon').count(),1);
       await page.locator('#mapPointTemp').click();
+      assert.equal(await page.locator('.map-selected-icon').count(),0,'saving as TEMP clears ephemeral selection');
       assert.equal(await page.locator('#sheet').isHidden(), true);
       const pinned=await page.evaluate(() => BaselineState.state.temp);
       assert(Math.abs(pinned.lat-mapTouch.lat)<0.000002 && Math.abs(pinned.lon-mapTouch.lon)<0.000002);
@@ -225,6 +255,12 @@ const server = http.createServer((req, res) => {
         }
         throw new Error('No map-only point for double-tap test');
       });
+      const doubleTapAnchor=await page.evaluate(({x,y})=>{
+        const map=BaselineApp.map;
+        const rect=map.getContainer().getBoundingClientRect();
+        const latlng=map.containerPointToLatLng([x-rect.left,y-rect.top]);
+        return {x,y,lat:latlng.lat,lng:latlng.lng};
+      },freeTapPoint);
       const beforeDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
       await page.touchscreen.tap(freeTapPoint.x,freeTapPoint.y);
       await page.waitForTimeout(250);
@@ -232,6 +268,13 @@ const server = http.createServer((req, res) => {
       await page.waitForTimeout(280);
       const afterDoubleTapZoom=await page.evaluate(() => BaselineApp.map.getZoom());
       assert.equal(afterDoubleTapZoom,beforeDoubleTapZoom+1,'double tap must zoom exactly one step');
+      const anchorDistance=await page.evaluate(({x,y,lat,lng})=>{
+        const map=BaselineApp.map;
+        const actual=map.latLngToContainerPoint([lat,lng]);
+        const rect=map.getContainer().getBoundingClientRect();
+        return Math.hypot(actual.x-(x-rect.left),actual.y-(y-rect.top));
+      },doubleTapAnchor);
+      assert(anchorDistance < 5,'double tap must preserve its geographic anchor (no teleport)');
 
       await page.evaluate(() => {
         const t = BaselineState.state.temp;
