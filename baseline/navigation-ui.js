@@ -18,6 +18,8 @@
   const $ = id => document.getElementById(id);
   const routeLayer = L.layerGroup().addTo(map);
   const drawingLayer = L.layerGroup().addTo(map);
+  // Uncommitted tap-to-connect vertices must stay on the map in WGS84.
+  const drawingPointLayer = L.layerGroup().addTo(map);
   const pointLayer = L.layerGroup().addTo(map);
   const trackLayer = L.layerGroup().addTo(map);
   const recordPreviewLayer = L.layerGroup().addTo(map);
@@ -25,9 +27,12 @@
   let draft = null;
   let planViewActive = false;
   let drawingMode = false;
-  let drawKind = 'ROUTE';
+  // Tool controls the gesture; style controls the saved line appearance.
+  let drawTool = 'FREE';
+  let drawStyle = 'MARK';
   let liveLine = null;
   let currentStroke = null;
+  let pointChain = [];
   let pointerState = new Map();
   let gesture = null;
   let gestureUntilClear = false;
@@ -1006,19 +1011,35 @@
     return map.containerPointToLatLng([event.clientX-rect.left,event.clientY-rect.top]);
   }
 
+  function renderPointPreview() {
+    drawingPointLayer.clearLayers();
+    if(!drawingMode || drawTool!=='POINT')return;
+    // Every vertex is a geographic Leaflet point; never a fixed screen icon.
+    pointChain.forEach((coords,index)=>{
+      L.circleMarker(coords,{
+        radius:index===pointChain.length-1?4.6:3.6,
+        color:'#b9ffd0',
+        weight:1.5,
+        fillColor:'#04170a',
+        fillOpacity:.96,
+        className:'baseline-point-node',
+        interactive:false
+      }).addTo(drawingPointLayer);
+    });
+  }
+
   function renderLiveStroke() {
-    if (liveLine) {
-      liveLine.remove();
-      liveLine=null;
-    }
-    if (!currentStroke || currentStroke.length < 2) return;
-    liveLine=L.polyline(currentStroke,{
+    if (liveLine) {liveLine.remove();liveLine=null;}
+    const points=drawTool==='POINT'?pointChain:currentStroke;
+    if (!points || points.length < 2) return;
+    liveLine=L.polyline(points,{
       interactive:false,
-      color:'#9de3a4',
+      className:drawTool==='POINT'?'baseline-point-preview':'baseline-free-preview',
+      color:'#b9ffd0',
       weight:2,
       opacity:.95,
-      dashArray:drawKind === 'ROUTE' ? '8 6' : null
-    }).addTo(drawingLayer);
+      dashArray:drawStyle==='ROUTE'?'8 6':null
+    }).addTo(drawingPointLayer);
   }
 
   function commitStroke() {
@@ -1027,14 +1048,49 @@
       renderLiveStroke();
       return;
     }
-    const seg=Plans.drawing({kind:drawKind,points:currentStroke});
+    const seg=Plans.drawing({kind:drawStyle,points:currentStroke});
     if (seg) {
       drawUndoHistory.push(clone(draft.drawings));
       draft.drawings.push(seg);
     }
     currentStroke=null;
-    if (liveLine) { liveLine.remove(); liveLine=null; }
-    routeChanged('DRAWING');
+    if (liveLine) {liveLine.remove();liveLine=null;}
+    routeChanged('DRAWING_FREE');
+  }
+
+  function commitPointChain() {
+    if(!pointChain.length)return false;
+    if(!draft || pointChain.length<2){
+      pointChain=[];
+      renderLiveStroke();
+      renderPointPreview();
+      syncDrawButtons();
+      return false;
+    }
+    const seg=Plans.drawing({kind:drawStyle,points:pointChain});
+    if(seg){
+      drawUndoHistory.push(clone(draft.drawings));
+      draft.drawings.push(seg);
+    }
+    pointChain=[];
+    if(liveLine){liveLine.remove();liveLine=null;}
+    renderPointPreview();
+    syncDrawButtons();
+    if(seg)routeChanged('DRAWING_POINT');
+    return Boolean(seg);
+  }
+
+  function addPointToChain(event) {
+    if(!draft || pointChain.length>=160)return;
+    const ll=drawLatLng(event);
+    const coords=[ll.lat,ll.lng];
+    const last=pointChain[pointChain.length-1];
+    // Drop accidental double taps at the same geographic location.
+    if(last && map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(coords))<5)return;
+    pointChain.push(coords);
+    renderLiveStroke();
+    renderPointPreview();
+    syncDrawButtons();
   }
 
   function midpoint(a,b) {
@@ -1107,7 +1163,7 @@
   function updateEraserCursor(event) {
     const node=$('drawingEraserCursor');
     if(!node)return;
-    if(!event || drawKind!=='ERASE'){node.hidden=true;return;}
+    if(!event || drawTool!=='ERASE'){node.hidden=true;return;}
     const p=drawPixel(event);
     node.hidden=false;
     node.style.left=p.x+'px';
@@ -1121,61 +1177,72 @@
 
     capture.addEventListener('pointerdown',event => {
       if (!drawingMode) return;
-      try { capture.setPointerCapture?.(event.pointerId); } catch {}
-      pointerState.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      try {capture.setPointerCapture?.(event.pointerId);}catch{}
+      pointerState.set(event.pointerId,{
+        x:event.clientX,y:event.clientY,
+        startX:event.clientX,startY:event.clientY,
+        moved:false
+      });
 
-      if (pointerState.size === 1 && !gestureUntilClear) {
-        if (drawKind==='ERASE') {
+      if (pointerState.size===1 && !gestureUntilClear) {
+        if(drawTool==='ERASE'){
           eraserTrail=[drawPixel(event)];
           updateEraserCursor(event);
           currentStroke=null;
-        } else {
+        }else if(drawTool==='FREE'){
           const ll=drawLatLng(event);
           currentStroke=[[ll.lat,ll.lng]];
           renderLiveStroke();
         }
-      } else if (pointerState.size >= 2) {
+        // POINT waits until pointerup. No vertex is added by a swipe.
+      }else if(pointerState.size>=2){
         eraserTrail=[];
         updateEraserCursor(null);
         currentStroke=null;
-        if (liveLine) { liveLine.remove(); liveLine=null; }
         gestureUntilClear=true;
         const pts=[...pointerState.values()].slice(0,2);
-        gesture={mid:midpoint(pts[0],pts[1]),startDist:Math.max(1,distance(pts[0],pts[1])),zoom:map.getZoom()};
+        gesture={
+          mid:midpoint(pts[0],pts[1]),
+          startDist:Math.max(1,distance(pts[0],pts[1])),
+          zoom:map.getZoom()
+        };
+        // Keep existing pointChain when map is panned or pinched.
       }
       event.preventDefault();
     },{passive:false});
 
     capture.addEventListener('pointermove',event => {
       if (!drawingMode || !pointerState.has(event.pointerId)) return;
-      pointerState.set(event.pointerId,{x:event.clientX,y:event.clientY});
+      const prior=pointerState.get(event.pointerId);
+      pointerState.set(event.pointerId,{
+        ...prior,x:event.clientX,y:event.clientY,
+        moved:prior.moved || Math.hypot(event.clientX-prior.startX,event.clientY-prior.startY)>10
+      });
 
-      if (pointerState.size >= 2) {
+      if(pointerState.size>=2){
         const pts=[...pointerState.values()].slice(0,2);
         const nextMid=midpoint(pts[0],pts[1]);
         const nextDist=Math.max(1,distance(pts[0],pts[1]));
-        if (gesture) {
+        if(gesture){
           map.panBy([gesture.mid.x-nextMid.x,gesture.mid.y-nextMid.y],{animate:false});
           const rect=capture.getBoundingClientRect();
           const anchor=L.point(nextMid.x-rect.left,nextMid.y-rect.top);
-          // Ratio must be measured against the initial spread. Resetting
-          // it every move loses fractional zoom changes.
           const zoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
             gesture.zoom+Math.log2(nextDist/gesture.startDist)));
           if(Math.abs(zoom-map.getZoom())>=.12)
             map.setZoomAround(anchor,zoom,{animate:false});
           gesture.mid=nextMid;
         }
-      } else if (!gestureUntilClear && drawKind==='ERASE') {
+      }else if(!gestureUntilClear && drawTool==='ERASE'){
         const next=drawPixel(event);
         if(!eraserTrail.length || distance(next,eraserTrail[eraserTrail.length-1])>3)
           eraserTrail.push(next);
         updateEraserCursor(event);
-      } else if (!gestureUntilClear && currentStroke) {
+      }else if(!gestureUntilClear && drawTool==='FREE' && currentStroke){
         const ll=drawLatLng(event);
         const point=[ll.lat,ll.lng];
         const last=currentStroke[currentStroke.length-1];
-        if (!last || map.distance(last,point) > 2) {
+        if(!last || map.distance(last,point)>2){
           currentStroke.push(point);
           renderLiveStroke();
         }
@@ -1183,18 +1250,25 @@
       event.preventDefault();
     },{passive:false});
 
-    const end=event => {
-      if (!pointerState.has(event.pointerId)) return;
+    const end=event=>{
+      const prior=pointerState.get(event.pointerId);
+      if(!prior)return;
       pointerState.delete(event.pointerId);
-      if (!gestureUntilClear && pointerState.size === 0) {
-        if(drawKind==='ERASE')eraseByTrail(eraserTrail);
-        else commitStroke();
+      if(!gestureUntilClear && pointerState.size===0){
+        if(drawTool==='ERASE' && event.type==='pointerup')eraseByTrail(eraserTrail);
+        else if(drawTool==='POINT' && event.type==='pointerup' && !prior.moved)
+          addPointToChain(event);
+        else if(drawTool==='FREE' && event.type==='pointerup')commitStroke();
       }
-      if (pointerState.size === 0) {
+      if(pointerState.size===0){
         eraserTrail=[];
         updateEraserCursor(null);
+        if(currentStroke && drawTool==='FREE' && event.type==='pointercancel'){
+          currentStroke=null;
+          renderLiveStroke();
+        }
       }
-      if (gestureUntilClear && pointerState.size === 0) {
+      if(gestureUntilClear && pointerState.size===0){
         gestureUntilClear=false;
         gesture=null;
         currentStroke=null;
@@ -1207,7 +1281,7 @@
   }
 
   function enterDrawing() {
-    if (!draft) return;
+    if(!draft)return;
     drawingMode=true;
     originalZoomSnap=map.options.zoomSnap;
     map.options.zoomSnap=.25;
@@ -1217,12 +1291,17 @@
     document.body.classList.add('baseline-drawing');
     bindDrawingCapture();
     syncDrawButtons();
-    toast('한 손가락 그리기·지우기 · 두 손가락 확대·이동');
+    toast('자유·점 연결 · 두 손가락 확대·이동');
   }
 
   function exitDrawing() {
-    if (!drawingMode) return;
-    if (currentStroke?.length >= 2) commitStroke();
+    if(!drawingMode)return;
+    if(currentStroke?.length>=2)commitStroke();
+    if(pointChain.length>=2)commitPointChain();
+    else {
+      pointChain=[];
+      renderPointPreview();
+    }
     drawingMode=false;
     pointerState.clear();
     currentStroke=null;
@@ -1231,7 +1310,8 @@
     gesture=null;
     gestureUntilClear=false;
     if(originalZoomSnap!==null){map.options.zoomSnap=originalZoomSnap;originalZoomSnap=null;}
-    if (liveLine) { liveLine.remove(); liveLine=null; }
+    if(liveLine){liveLine.remove();liveLine=null;}
+    drawingPointLayer.clearLayers();
     $('drawingCapture').hidden=true;
     $('drawingControls').hidden=true;
     document.body.classList.remove('baseline-drawing');
@@ -1239,22 +1319,67 @@
   }
 
   function syncDrawButtons() {
-    document.querySelectorAll('[data-draw-kind]').forEach(btn => {
-      btn.classList.toggle('active',btn.dataset.drawKind === drawKind);
+    document.querySelectorAll('[data-draw-tool]').forEach(btn=>{
+      const on=btn.dataset.drawTool===drawTool;
+      btn.classList.toggle('active',on);
+      btn.setAttribute('aria-pressed',String(on));
     });
+    document.querySelectorAll('[data-draw-kind]').forEach(btn=>{
+      if(btn.dataset.drawKind==='ERASE')return;
+      const on=btn.dataset.drawKind===drawStyle;
+      btn.classList.toggle('active',on);
+      btn.setAttribute('aria-pressed',String(on));
+    });
+    const note=$('drawModeNote');
+    if(note){
+      note.textContent=drawTool==='POINT'
+        ? '점 연결 · '+pointChain.length+'개 지점 · 두 손가락 확대·이동 · 완료 시 저장'
+        : drawTool==='ERASE'
+          ? '지우개 · 손가락으로 선 일부 삭제 · 두 손가락 확대·이동'
+          : '자유 드로잉 · 손가락으로 그리기 · 두 손가락 확대·이동';
+    }
   }
 
-  document.querySelectorAll('[data-draw-kind]').forEach(btn => btn.addEventListener('click',() => {
+  document.querySelectorAll('[data-draw-tool]').forEach(btn=>btn.addEventListener('click',()=>{
+    const next=btn.dataset.drawTool;
+    if(!['FREE','POINT','ERASE'].includes(next) || next===drawTool)return;
     if(currentStroke?.length>=2)commitStroke();
+    if(pointChain.length>=2)commitPointChain();
+    else if(pointChain.length){
+      pointChain=[];
+      renderPointPreview();
+    }
     currentStroke=null;
     eraserTrail=[];
     updateEraserCursor(null);
-    const kind=btn.dataset.drawKind;
-    drawKind=kind==='MARK'?'MARK':kind==='ERASE'?'ERASE':'ROUTE';
+    drawTool=next;
+    renderLiveStroke();
+    renderPointPreview();
     syncDrawButtons();
   }));
-  $('drawUndoBtn')?.addEventListener('click',() => {
-    if (!draft) return toast('되돌릴 드로잉 없음');
+  document.querySelectorAll('[data-draw-kind]').forEach(btn=>btn.addEventListener('click',()=>{
+    const style=btn.dataset.drawKind;
+    if(!['MARK','ROUTE'].includes(style) || style===drawStyle)return;
+    if(currentStroke?.length>=2)commitStroke();
+    if(pointChain.length>=2)commitPointChain();
+    else if(pointChain.length){
+      pointChain=[];
+      renderPointPreview();
+    }
+    currentStroke=null;
+    drawStyle=style;
+    renderLiveStroke();
+    syncDrawButtons();
+  }));
+  $('drawUndoBtn')?.addEventListener('click',()=>{
+    if(!draft)return toast('되돌릴 드로잉 없음');
+    if(drawTool==='POINT' && pointChain.length){
+      pointChain.pop();
+      renderLiveStroke();
+      renderPointPreview();
+      syncDrawButtons();
+      return;
+    }
     if(drawUndoHistory.length)draft.drawings=drawUndoHistory.pop();
     else if(draft.drawings.length)draft.drawings.pop();
     else return toast('되돌릴 드로잉 없음');
