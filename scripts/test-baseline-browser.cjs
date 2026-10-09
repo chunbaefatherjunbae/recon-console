@@ -561,8 +561,17 @@ const server = http.createServer((req, res) => {
         {label:'tablet-landscape',width:1180,height:820}
       ]){
         await page.setViewportSize({width:spec.width,height:spec.height});
-        // Do NOT manually invalidate: the app must reconcile the real size.
-        await page.waitForTimeout(250);
+        // Do NOT manually invalidate: WebKit may deliver its ResizeObserver
+        // asynchronously after setViewportSize resolves. Wait for the app to
+        // reconcile Leaflet size and CSS viewport (not merely a timer).
+        await page.waitForFunction(target=>{
+          const map=BaselineApp.map,rect=map.getContainer().getBoundingClientRect();
+          const size=map.getSize();
+          return Math.abs(rect.width-target.width)<2 &&
+            Math.abs(size.x-rect.width)<2 &&
+            Math.abs(size.y-rect.height)<2;
+        },spec,{timeout:4000});
+        await page.waitForTimeout(100);
         await measureSiteReticle(spec.label);
         await page.screenshot({path:`ui-results-baseline/${name}-site-sight-${spec.label}.png`,fullPage:true});
       }

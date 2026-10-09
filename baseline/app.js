@@ -1604,6 +1604,10 @@
     const observer=new ResizeObserver(reconcileMapViewport);
     observer.observe(map.getContainer());
   }
+  // WebKit may dispatch window resize earlier than ResizeObserver on a rapid
+  // phone-landscape → iPad-portrait viewport switch. The rAF coalescer above
+  // ensures duplicate notifications only trigger one Leaflet reconciliation.
+  window.addEventListener('resize',reconcileMapViewport);
   window.addEventListener('orientationchange',reconcileMapViewport);
   window.visualViewport?.addEventListener('resize',reconcileMapViewport);
 
