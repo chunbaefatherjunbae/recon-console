@@ -995,7 +995,10 @@
     openSheet('sites', { title:'거점 정보', html });
 
     $('siteMapGo')?.addEventListener('click', () => {
-      map.setView(site.coords, Math.max(map.getZoom(), 15), { animate:true });
+      // A selected site must land directly beneath the fixed map reticle.
+      // Animated pan/zoom can show an intermediate offset on mobile Safari.
+      map.stop();
+      map.setView(site.coords, Math.max(map.getZoom(), 15), { animate:false });
       closeSheet();
       toast('거점으로 이동');
     });
@@ -1458,6 +1461,27 @@
     if (Date.now() < suppressMapTapCloseUntil) return;
     if (!$('sheet')?.hidden) closeSheet();
   });
+
+  // Changing bottom navigation height and rotating iPad/phone windows can
+  // resize #map without the window "resize" event arriving in the same frame.
+  // Leaflet uses cached pixel bounds. Observe the actual map viewport instead
+  // of assuming its cached center always matches the CSS-centered reticle.
+  let mapResizeFrame=0;
+  const reconcileMapViewport=()=>{
+    if(mapResizeFrame)return;
+    mapResizeFrame=requestAnimationFrame(()=>{
+      mapResizeFrame=0;
+      map.invalidateSize({pan:false,debounceMoveend:true});
+      renderReticleCoordinate();
+      renderScale();
+    });
+  };
+  if(typeof ResizeObserver==='function'){
+    const observer=new ResizeObserver(reconcileMapViewport);
+    observer.observe(map.getContainer());
+  }
+  window.addEventListener('orientationchange',reconcileMapViewport);
+  window.visualViewport?.addEventListener('resize',reconcileMapViewport);
 
   let reticleHudFrame=0;
   map.on('move zoom resize', () => {
