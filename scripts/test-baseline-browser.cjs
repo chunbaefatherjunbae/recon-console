@@ -903,7 +903,7 @@ const server = http.createServer((req, res) => {
       await page.locator('[data-draw-tool="ERASE"]').click();
       assert.equal(await page.locator('path.baseline-point-preview').count(),1,
         'unfinished connected edge must remain visible while erasing vertices');
-      assert.equal(await page.locator('circle.baseline-point-node').count(),3);
+      assert.equal(await page.locator('path.baseline-point-node').count(),3);
       const e1=await page.evaluate(()=>{
         const arr=BaselineNavigationUI.getDrawingState().points,m=BaselineApp.map;
         const a=m.latLngToContainerPoint(arr[0]),b=m.latLngToContainerPoint(arr[1]);
