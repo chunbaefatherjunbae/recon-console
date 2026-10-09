@@ -23,6 +23,10 @@
   let suppressMapTapCloseUntil = 0;
   let gpsMarker = null;
   let lastMarker = null;
+  // A fresh GPS activation recenters exactly once after a valid fix.
+  // Position tracking remains an independent, opt-in FOLLOW behavior.
+  let gpsFirstFixPending = false;
+  let gpsWatchGeneration = 0;
   let activeSiteFilter = 'registered';
   let exploreRadius = 'all';
   let exploreCircle = null;
@@ -362,6 +366,9 @@
   }
 
   function stopGpsWatch() {
+    // Invalidate callbacks already queued by an earlier geolocation watch.
+    gpsWatchGeneration += 1;
+    gpsFirstFixPending = false;
     const id = S.state.gps.watchId;
     if (id !== null && navigator.geolocation) {
       try { navigator.geolocation.clearWatch(id); } catch {}
@@ -379,29 +386,53 @@
 
   function startGpsWatch() {
     if (!navigator.geolocation) {
+      stopGpsWatch();
       toast('GPS 미지원');
       S.setGpsEnabled(false);
       return;
     }
 
-    const id = navigator.geolocation.watchPosition(position => {
-      const fix = S.setGpsFix({
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        altitude: position.coords.altitude
+    const generation = ++gpsWatchGeneration;
+    let id;
+    try {
+      id = navigator.geolocation.watchPosition(position => {
+        if (generation !== gpsWatchGeneration || !S.state.gps.enabled) return;
+        const latitude = Number(position?.coords?.latitude);
+        const longitude = Number(position?.coords?.longitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+            Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return;
+        const fix = S.setGpsFix({
+          lat: latitude,
+          lon: longitude,
+          accuracy: position.coords.accuracy,
+          altitude: position.coords.altitude
+        });
+
+        if (gpsFirstFixPending) {
+          gpsFirstFixPending = false;
+          // First fix may be far away; jump rather than scrolling hundreds of
+          // kilometers through unloaded map tiles. Preserve tighter zoom.
+          map.setView([fix.lat, fix.lon], Math.max(map.getZoom(), 15), { animate:false });
+          toast('현재 위치로 이동');
+        } else if (S.state.gps.follow) {
+          map.panTo([fix.lat, fix.lon], { animate:true });
+        }
+      }, error => {
+        if (generation === gpsWatchGeneration && S.state.gps.enabled) gpsError(error);
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 3000,
+        timeout: 15000
       });
-
-      if (S.state.gps.follow) {
-        map.panTo([fix.lat, fix.lon], { animate: true });
-      }
-    }, gpsError, {
-      enableHighAccuracy: true,
-      maximumAge: 3000,
-      timeout: 15000
-    });
-
-    S.setWatchId(id);
+    } catch (error) {
+      if (generation === gpsWatchGeneration) gpsError(error);
+      return;
+    }
+    if (generation === gpsWatchGeneration && S.state.gps.enabled) {
+      S.setWatchId(id);
+    } else {
+      try { navigator.geolocation.clearWatch(id); } catch {}
+    }
   }
 
   function toggleGps() {
@@ -413,9 +444,10 @@
       return;
     }
 
+    gpsFirstFixPending = true;
     S.setGpsEnabled(true);
     startGpsWatch();
-    toast('GPS ON');
+    if (S.state.gps.enabled) toast('GPS FIX 대기');
   }
 
   function centerOnReference({ engageFollow = false } = {}) {
@@ -425,7 +457,9 @@
       return false;
     }
     if (engageFollow) S.setFollow(true);
-    map.setView([ref.lat, ref.lon], Math.max(map.getZoom(), 15), { animate: true });
+    // Explicit recenter overrides the pending first-fix positioning.
+    gpsFirstFixPending = false;
+    map.setView([ref.lat, ref.lon], Math.max(map.getZoom(), 15), { animate:true });
     return true;
   }
 
@@ -437,17 +471,17 @@
     }
 
     if (!S.state.gps.enabled) {
-      centerOnReference({ engageFollow: false });
+      centerOnReference({ engageFollow:false });
       toast('기준 위치로 이동');
       return;
     }
-
-    if (!centerOnReference({ engageFollow: true })) {
-      toast('GPS FIX 대기');
+    // A stale LAST/TEMP reference must never be mistaken for live GPS.
+    if (!S.state.gps.fix) {
       S.setFollow(true);
-    } else {
-      toast('TRACK ON');
+      toast('GPS FIX 대기');
+      return;
     }
+    if (centerOnReference({ engageFollow:true })) toast('TRACK ON');
   }
 
   function setTempAtReticle() {
@@ -1587,10 +1621,18 @@
   // on every pointer move, but keep scale correct after navigation settles.
   map.on('moveend zoomend resize', renderScale);
   map.on('dragstart', () => {
+    // If the user moves the map while waiting for a fix, don't yank the map
+    // away from the newly chosen point when GPS eventually resolves.
+    gpsFirstFixPending = false;
     if (S.state.gps.follow) {
       S.setFollow(false);
       toast('TRACK OFF');
     }
+  });
+  map.on('zoomstart', () => {
+    // Manual pinch/wheel zoom is also a signal that the map is in use.
+    // First-fix setView already clears the flag before changing zoom.
+    if (!S.state.gps.follow) gpsFirstFixPending = false;
   });
 
   window.addEventListener('baseline-state-change', () => {
