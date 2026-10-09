@@ -20,6 +20,10 @@
   const drawingLayer = L.layerGroup().addTo(map);
   // Uncommitted tap-to-connect vertices must stay on the map in WGS84.
   const drawingPointLayer = L.layerGroup().addTo(map);
+  // Leaflet defaults to Canvas on RECON. Active editable geometry needs a
+  // shared crisp SVG renderer so vertices remain individually inspectable and
+  // don't flicker during erase, rotation or fractional zoom changes.
+  const drawingEditRenderer = L.svg({padding:.12});
   const pointLayer = L.layerGroup().addTo(map);
   const trackLayer = L.layerGroup().addTo(map);
   const recordPreviewLayer = L.layerGroup().addTo(map);
@@ -1039,6 +1043,7 @@
         fillColor:active?'#b9ffd0':'#04170a',
         fillOpacity:.96,
         className:'baseline-point-node',
+        renderer:drawingEditRenderer,
         interactive:false
       }).addTo(drawingPointLayer);
     };
@@ -1062,6 +1067,7 @@
       color:'#b9ffd0',
       weight:2,
       opacity:.95,
+      renderer:drawingEditRenderer,
       dashArray:drawStyle==='ROUTE'?'8 6':null
     }).addTo(drawingLayer);
   }
