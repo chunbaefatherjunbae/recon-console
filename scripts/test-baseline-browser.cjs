@@ -343,6 +343,7 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('[data-site-filter]').count(), 3);
       assert.equal(await page.locator('.site-row').count(), 24);
       await page.screenshot({ path:`ui-results-baseline/${name}-sites.png`, fullPage:true });
+      const firstRegisteredId=await page.locator('.site-row').first().getAttribute('data-site-id');
       await page.locator('.site-row').first().click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '거점 정보');
       assert(await page.locator('#siteMapGo').isVisible());
@@ -350,7 +351,70 @@ const server = http.createServer((req, res) => {
       await page.locator('#siteSecureToggle').click();
       assert.equal(await page.locator('#siteSecureToggle').textContent(), '개척 취소');
       assert.equal(await page.evaluate(() => BaselineSites.getSecured().length), 1);
-      await page.locator('#sheetClose').click();
+
+      // Regression: a registered site sent to the map must sit beneath the
+      // visual sight center and the Leaflet projection at four viewport sizes.
+      await page.locator('#siteMapGo').click();
+      await page.waitForFunction(id=>{
+        const c=BaselineApp.map.getCenter(),s=BaselineSites.find(id);
+        return Math.abs(c.lat-s.coords[0])<0.000003 && Math.abs(c.lng-s.coords[1])<0.000003;
+      },firstRegisteredId);
+      const measureSiteReticle=async(label,siteId=firstRegisteredId)=>{
+        const metrics=await page.evaluate(id=>{
+          const site=BaselineSites.find(id),map=BaselineApp.map,
+            bounds=map.getContainer().getBoundingClientRect(),
+            cross=document.querySelector('.reticle').getBoundingClientRect(),
+            reticle=[cross.left+cross.width/2,cross.top+cross.height/2],
+            center=map.getCenter(),
+            projected=map.latLngToContainerPoint(site.coords),
+            expected=[bounds.left+projected.x,bounds.top+projected.y],
+            marker=BaselineApp.siteLayer.getLayers().find(layer=>
+              typeof layer.getLatLng==='function' &&
+              Math.abs(layer.getLatLng().lat-site.coords[0])<1e-8 &&
+              Math.abs(layer.getLatLng().lng-site.coords[1])<1e-8);
+          const icon=marker?.getElement()?.querySelector('svg.marker-symbol')?.getBoundingClientRect();
+          const iconCenter=icon?[icon.left+icon.width/2,icon.top+icon.height/2]:null;
+          const aim=map.containerPointToLatLng([reticle[0]-bounds.left,reticle[1]-bounds.top]);
+          return {
+            dProjection:Math.hypot(reticle[0]-expected[0],reticle[1]-expected[1]),
+            dMarker:iconCenter?Math.hypot(reticle[0]-iconCenter[0],reticle[1]-iconCenter[1]):9999,
+            dGeo:map.distance(aim,site.coords),
+            dCenter:map.distance(center,site.coords),
+            mapWidth:map.getSize().x,actualWidth:bounds.width,
+            mapHeight:map.getSize().y,actualHeight:bounds.height,
+            site:[...site.coords],reticle,iconCenter,expected
+          };
+        },siteId);
+        console.log(name+' '+label+' site/reticle alignment: '+JSON.stringify(metrics));
+        assert(metrics.dCenter<2,label+' map center must match selected site');
+        assert(metrics.dGeo<2,label+' reticle geography must match selected site');
+        assert(metrics.dProjection<=2,label+' map projection must meet reticle');
+        assert(metrics.dMarker<=2,label+' registered SVG marker center must meet reticle');
+        assert(Math.abs(metrics.mapWidth-metrics.actualWidth)<2 &&
+          Math.abs(metrics.mapHeight-metrics.actualHeight)<2,
+          label+' Leaflet pixel viewport must match CSS viewport');
+      };
+      for(const spec of [
+        {label:'phone-portrait',width:390,height:844},
+        {label:'phone-landscape',width:844,height:390},
+        {label:'tablet-portrait',width:820,height:1100},
+        {label:'tablet-landscape',width:1180,height:820}
+      ]){
+        await page.setViewportSize({width:spec.width,height:spec.height});
+        // Do NOT manually invalidate: the app must reconcile the real size.
+        await page.waitForTimeout(250);
+        await measureSiteReticle(spec.label);
+        await page.screenshot({path:`ui-results-baseline/${name}-site-sight-${spec.label}.png`,fullPage:true});
+      }
+      await page.setViewportSize({width:390,height:844});
+      await page.waitForTimeout(240);
+      // Simulate an app panel altering map height with NO window resize event.
+      await page.evaluate(()=>document.documentElement.style.setProperty('--bottom-h','92px'));
+      await page.waitForTimeout(260);
+      await measureSiteReticle('css-only-map-resize');
+      await page.evaluate(()=>document.documentElement.style.removeProperty('--bottom-h'));
+      await page.waitForTimeout(260);
+      await measureSiteReticle('restored-portrait');
 
       await page.locator('.bottom-nav button[data-panel="sites"]').click();
       await page.locator('[data-site-filter="secured"]').click();
