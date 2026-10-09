@@ -1128,6 +1128,38 @@ const server = http.createServer((req, res) => {
         await page.locator('#sheetClose').click();
       }
 
+      // Simulate a partially unavailable OpenTopoMap service. The app must
+      // present a useful OSM background instead of leaving blank tile holes,
+      // while not downloading the second basemap on normal startup.
+      const recovery=await page.evaluate(()=>{
+        BaselineLiteMap.setMode('online');
+        const lazy=!BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer);
+        BaselineApp.topoLayer.fire('tileerror');
+        const first=BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer);
+        BaselineApp.topoLayer.fire('tileerror');
+        BaselineApp.topoLayer.fire('tileerror');
+        const recovered={
+          lazy,first,status:BaselineLiteMap.status(),
+          fallbackVisible:BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer),
+          topoActive:BaselineApp.map.hasLayer(BaselineApp.topoLayer),
+          roadActive:BaselineApp.map.hasLayer(BaselineApp.roadBoostLayer)
+        };
+        BaselineLiteMap.setMode('online');
+        recovered.reset={
+          recovered:false,
+          topoActive:BaselineApp.map.hasLayer(BaselineApp.topoLayer),
+          fallbackActive:BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer)
+        };
+        return recovered;
+      });
+      assert(recovery.lazy && recovery.first,'OSM backup must load only after a real topo tile error');
+      assert(recovery.status.onlineRecoveryActive && recovery.status.onlineRecoveryPrimary &&
+        recovery.fallbackVisible && !recovery.topoActive && !recovery.roadActive,
+        'repeated failed topographic tiles must switch to real OSM without triple requests');
+      assert.equal(recovery.status.label,'MAP · OSM');
+      assert(recovery.reset.topoActive && !recovery.reset.fallbackActive,
+        'explicit online selection should retry the original detailed map');
+
       assert.deepEqual(errors, []);
     } catch (error) {
       failures++;
