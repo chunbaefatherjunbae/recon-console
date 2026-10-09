@@ -876,6 +876,116 @@ const server = http.createServer((req, res) => {
       await page.locator('#drawUndoBtn').click();
       const restored=await page.evaluate(() => BaselineNavigationUI.getDraft().drawings.length);
       assert.equal(restored,1,'undo must restore erased stroke segments');
+
+      // RECON POINT: a tap adds precisely one geographic vertex; connected
+      // edges persist even when their midpoint is touched by the eraser.
+      const drawTap=async(pointerId,x,y)=>{
+        const p={pointerId,pointerType:'touch',isPrimary:true,button:0,clientX:x,clientY:y};
+        await page.locator('#drawingCapture').dispatchEvent('pointerdown',p);
+        await page.locator('#drawingCapture').dispatchEvent('pointerup',p);
+      };
+      await page.locator('[data-draw-tool="POINT"]').click();
+      assert.equal(await page.locator('#drawFinishLineBtn').isVisible(),true);
+      assert.equal(await page.locator('[data-draw-tool="POINT"]').getAttribute('aria-pressed'),'true');
+      const nodesPixels=[[drawBox.x+50,drawBox.y+485],[drawBox.x+170,drawBox.y+430],
+        [drawBox.x+290,drawBox.y+485]];
+      for(let i=0;i<nodesPixels.length;i++)
+        await drawTap(151+i,nodesPixels[i][0],nodesPixels[i][1]);
+      const originalPointChain=await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points);
+      assert.equal(originalPointChain.length,3,'each tap must yield exactly one corner');
+      assert.equal(await page.locator('path.baseline-point-preview').count(),1);
+      assert.equal(await page.locator('path.baseline-point-preview').getAttribute('stroke-dasharray'),null,
+        'solid line is the default drawing style');
+      await page.locator('[data-draw-kind="ROUTE"]').click();
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points.length),3,
+        'changing line style must not accidentally commit/discard the point chain');
+      assert.equal(await page.locator('path.baseline-point-preview').getAttribute('stroke-dasharray'),'8 6');
+      await page.locator('[data-draw-tool="ERASE"]').click();
+      assert.equal(await page.locator('path.baseline-point-preview').count(),1,
+        'unfinished connected edge must remain visible while erasing vertices');
+      assert.equal(await page.locator('circle.baseline-point-node').count(),3);
+      const e1=await page.evaluate(()=>{
+        const arr=BaselineNavigationUI.getDrawingState().points,m=BaselineApp.map;
+        const a=m.latLngToContainerPoint(arr[0]),b=m.latLngToContainerPoint(arr[1]);
+        const r=m.getContainer().getBoundingClientRect();
+        return {x:r.left+(a.x+b.x)/2,y:r.top+(a.y+b.y)/2};
+      });
+      await drawTap(155,e1.x,e1.y);
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points.length),3,
+        'eraser touching a connected segment must not erase the line or a vertex');
+      await drawTap(156,nodesPixels[1][0],nodesPixels[1][1]);
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points.length),2,
+        'eraser directly on a vertex must delete that vertex and reconnect edges');
+      await page.locator('#drawUndoBtn').click();
+      const restoredPointChain=await page.evaluate(()=>BaselineNavigationUI.getDrawingState());
+      assert.deepEqual(restoredPointChain.points,originalPointChain,
+        'undo should restore the exact geographic coordinates of the erased vertex');
+      assert.equal(restoredPointChain.tool,'ERASE');
+      await page.locator('[data-draw-tool="POINT"]').click();
+      const beforePinchChain=await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points);
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',{
+        pointerId:160,pointerType:'touch',isPrimary:true,clientX:drawBox.x+110,clientY:drawBox.y+350
+      });
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',{
+        pointerId:161,pointerType:'touch',isPrimary:false,clientX:drawBox.x+220,clientY:drawBox.y+350
+      });
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',{
+        pointerId:160,pointerType:'touch',isPrimary:true,clientX:drawBox.x+90,clientY:drawBox.y+375
+      });
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',{
+        pointerId:160,pointerType:'touch',isPrimary:true,clientX:drawBox.x+90,clientY:drawBox.y+375
+      });
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',{
+        pointerId:161,pointerType:'touch',isPrimary:false,clientX:drawBox.x+220,clientY:drawBox.y+350
+      });
+      assert.deepEqual(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points),beforePinchChain,
+        'two-finger panning must retain the WGS84 location of every selected vertex');
+      assert.equal(await page.locator('#drawFinishLineBtn').isVisible(),true);
+      await page.locator('#drawFinishLineBtn').click();
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().points.length),0,
+        'finishing one connected line should immediately clear vertices for the next line');
+      let connected=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.filter(x=>x.mode==='POINT'));
+      assert.equal(connected.length,1);
+      assert.equal(connected[0].points.length,3);
+      assert.equal(connected[0].kind,'ROUTE','saved point chain must remember its dashed style');
+      assert.deepEqual(connected[0].points,originalPointChain);
+
+      // One more line without closing and reopening the drawing interface.
+      await drawTap(162,drawBox.x+75,drawBox.y+540);
+      await drawTap(163,drawBox.x+270,drawBox.y+540);
+      await page.locator('#drawFinishLineBtn').click();
+      connected=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.filter(x=>x.mode==='POINT'));
+      assert.equal(connected.length,2,'a second separate straight line should be possible in one drawing session');
+
+      // Erase an already committed point. The connected geometry keeps its
+      // identity and the two surviving endpoints reconnect automatically.
+      await page.locator('[data-draw-tool="ERASE"]').click();
+      const savedMiddle=await page.evaluate(()=>{
+        const seg=BaselineNavigationUI.getDraft().drawings.find(x=>x.mode==='POINT');
+        const pt=BaselineApp.map.latLngToContainerPoint(seg.points[1]);
+        const box=BaselineApp.map.getContainer().getBoundingClientRect();
+        return {x:box.left+pt.x,y:box.top+pt.y};
+      });
+      await drawTap(164,savedMiddle.x,savedMiddle.y);
+      connected=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.filter(x=>x.mode==='POINT'));
+      assert.equal(connected[0].points.length,2,'deleting a saved middle vertex must join neighboring endpoints');
+      assert.deepEqual(connected[0].points,[originalPointChain[0],originalPointChain[2]]);
+      await page.locator('#drawUndoBtn').click();
+      connected=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.filter(x=>x.mode==='POINT'));
+      assert.deepEqual(connected[0].points,originalPointChain,'undo must restore saved vertex edits as well');
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDrawingState().tool),'ERASE');
+
+      const roundTrip=await page.evaluate(()=>{
+        const draft=BaselineNavigationUI.getDraft();
+        const encoded=JSON.stringify(BaselinePlanStore.exportPayload(draft));
+        const decoded=BaselinePlanStore.normalize(JSON.parse(encoded).plan);
+        return decoded.drawings.filter(seg=>seg.mode==='POINT')
+          .map(seg=>({mode:seg.mode,kind:seg.kind,points:seg.points.length}));
+      });
+      assert.deepEqual(roundTrip,[
+        {mode:'POINT',kind:'ROUTE',points:3},
+        {mode:'POINT',kind:'ROUTE',points:2}
+      ],'plan export and import must preserve connected vertex mode and style');
       await page.locator('#drawDoneBtn').click();
       assert.equal(await page.evaluate(() => BaselineApp.map.options.zoomSnap),1,
         'normal map zoom snapping must be restored after drawing');
