@@ -2757,3 +2757,19 @@ body.layer-hide-track .baseline-track-path {
   .drawing-controls .drawing-action-row button {font-size:11px;}
   .drawing-mode-note {font-size:10px;}
 }
+
+/* Point mode adds a single dedicated finish-chain action, not a new screen.
+   The following chain starts immediately without restarting drawing mode. */
+.drawing-controls.point-mode .drawing-action-row {
+  grid-template-columns:repeat(5,minmax(0,1fr));
+}
+.drawing-controls .drawing-action-row #drawFinishLineBtn {
+  border-color:var(--border-accent);
+  color:var(--accent);
+}
+@media (max-height:520px) {
+  .drawing-controls {gap:3px;padding:4px;}
+  .drawing-controls .drawing-mode-note {display:none;}
+  .drawing-controls .drawing-tool-row button,
+  .drawing-controls .drawing-action-row button {min-height:32px;}
+}
