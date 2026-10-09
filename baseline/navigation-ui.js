@@ -356,6 +356,12 @@
 
   function routeChanged(reason = 'ROUTE_UPDATED') {
     renderPlanMap();
+    // Saved-plan redraws must not remove an unfinished chain.
+    if(drawingMode){
+      liveLine=null;
+      renderLiveStroke();
+      renderPointPreview();
+    }
     renderActiveTrack();
     renderHud();
     const active = Records.getActive();
@@ -1014,7 +1020,7 @@
 
   function renderPointPreview() {
     drawingPointLayer.clearLayers();
-    if(!drawingMode)return;
+    if(!drawingMode || !['POINT','ERASE'].includes(drawTool))return;
     const drawNode=(coords,active=false)=>{
       L.circleMarker(coords,{
         radius:active?5:4,
@@ -1036,11 +1042,13 @@
 
   function renderLiveStroke() {
     if (liveLine) {liveLine.remove();liveLine=null;}
-    const points=drawTool==='POINT'?pointChain:currentStroke;
+    const points=(drawTool==='POINT'||drawTool==='ERASE') && pointChain.length
+      ? pointChain : currentStroke;
     if (!points || points.length < 2) return;
     liveLine=L.polyline(points,{
       interactive:false,
-      className:drawTool==='POINT'?'baseline-point-preview':'baseline-free-preview',
+      className:(drawTool==='POINT'||drawTool==='ERASE') && pointChain.length
+        ? 'baseline-point-preview':'baseline-free-preview',
       color:'#b9ffd0',
       weight:2,
       opacity:.95,
@@ -1418,15 +1426,12 @@
     const style=btn.dataset.drawKind;
     if(!['MARK','ROUTE'].includes(style) || style===drawStyle)return;
     if(currentStroke?.length>=2)commitStroke();
-    if(pointChain.length>=2)commitPointChain();
-    else if(pointChain.length){
-      pointChain=[];
-      renderPointPreview();
-    }
+    // Changing line style should restyle an unfinished chain, not save it
+    // as a surprise or discard the first vertex.
     currentStroke=null;
-    pointChainHistory=[];
     drawStyle=style;
     renderLiveStroke();
+    renderPointPreview();
     syncDrawButtons();
   }));
   $('drawUndoBtn')?.addEventListener('click',()=>{
