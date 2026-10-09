@@ -1019,7 +1019,12 @@
 
   function drawSnapshot() {
     if(!draft)return;
-    drawUndoHistory.push({drawings:clone(draft.drawings),pointChain:clone(pointChain)});
+    drawUndoHistory.push({
+      drawings:clone(draft.drawings),
+      pointChain:clone(pointChain),
+      tool:drawTool,
+      style:drawStyle
+    });
     if(drawUndoHistory.length>150)drawUndoHistory.shift();
   }
 
@@ -1363,7 +1368,8 @@
     if(!drawingMode)return;
     if(currentStroke?.length>=2)commitStroke();
     if(pointChain.length>=2)commitPointChain();
-    else {
+    else if(pointChain.length){
+      toast('지점 하나만 찍힌 선은 저장하지 않음');
       pointChain=[];
       renderPointPreview();
     }
@@ -1395,10 +1401,13 @@
       btn.classList.toggle('active',on);
       btn.setAttribute('aria-pressed',String(on));
     });
+    const finish=$('drawFinishLineBtn');
+    if(finish)finish.hidden=drawTool!=='POINT';
+    $('drawingControls')?.classList.toggle('point-mode',drawTool==='POINT');
     const note=$('drawModeNote');
     if(note){
       note.textContent=drawTool==='POINT'
-        ? '점 연결 · '+pointChain.length+'개 지점 · 두 손가락 확대·이동 · 완료 시 저장'
+        ? '점 연결 · '+pointChain.length+'개 · 선 마침으로 저장 후 다음 선 시작'
         : drawTool==='ERASE'
           ? '지우개 · 점 연결선은 꼭짓점 탭 삭제 · 자유 드로잉은 문질러 삭제'
           : '자유 드로잉 · 손가락으로 그리기 · 두 손가락 확대·이동';
@@ -1435,12 +1444,18 @@
     renderPointPreview();
     syncDrawButtons();
   }));
+  $('drawFinishLineBtn')?.addEventListener('click',()=>{
+    if(pointChain.length<2)return toast('직선을 만들려면 점을 2개 이상 찍어야 함');
+    if(commitPointChain())toast('연결선 저장 · 다음 선을 시작할 수 있음');
+  });
   $('drawUndoBtn')?.addEventListener('click',()=>{
     if(!draft || !drawUndoHistory.length)return toast('되돌릴 드로잉 없음');
     // One chronological history works even across FREE, POINT and ERASE.
     const prev=drawUndoHistory.pop();
     draft.drawings=prev.drawings;
     pointChain=prev.pointChain;
+    drawTool=prev.tool || drawTool;
+    drawStyle=prev.style || drawStyle;
     routeChanged('DRAW_UNDO');
     renderLiveStroke();
     renderPointPreview();
