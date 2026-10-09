@@ -56,6 +56,9 @@
     return {
       id:String(input.id || ('DRAW-' + Date.now().toString(36) + Math.random().toString(36).slice(2,7))),
       kind:input.kind === 'MARK' ? 'MARK' : 'ROUTE',
+      // The geometry stays compatible with older plan files; new point-
+      // connected lines retain their edit semantics after save/import.
+      mode:input.mode === 'POINT' ? 'POINT' : 'FREE',
       points:pts
     };
   }
