@@ -1509,6 +1509,7 @@
     newDraft,
     loadPlan,
     getDraft:() => clone(draft),
+    getDrawingState:() => ({tool:drawTool,style:drawStyle,points:clone(pointChain),active:drawingMode}),
     enterDrawing,
     exitDrawing,
     saveCurrent,
