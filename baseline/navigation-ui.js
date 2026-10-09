@@ -33,6 +33,7 @@
   let liveLine = null;
   let currentStroke = null;
   let pointChain = [];
+  let pointChainHistory = [];
   let pointerState = new Map();
   let gesture = null;
   let gestureUntilClear = false;
@@ -1013,19 +1014,24 @@
 
   function renderPointPreview() {
     drawingPointLayer.clearLayers();
-    if(!drawingMode || drawTool!=='POINT')return;
-    // Every vertex is a geographic Leaflet point; never a fixed screen icon.
-    pointChain.forEach((coords,index)=>{
+    if(!drawingMode)return;
+    const drawNode=(coords,active=false)=>{
       L.circleMarker(coords,{
-        radius:index===pointChain.length-1?4.6:3.6,
+        radius:active?5:4,
         color:'#b9ffd0',
-        weight:1.5,
-        fillColor:'#04170a',
+        weight:1.6,
+        fillColor:active?'#b9ffd0':'#04170a',
         fillOpacity:.96,
         className:'baseline-point-node',
         interactive:false
       }).addTo(drawingPointLayer);
+    };
+    // Saved POINT vertices must remain visible when the eraser is selected.
+    // Their geographic locations are the only deletable part of these lines.
+    (draft?.drawings || []).forEach(seg=>{
+      if(seg.mode==='POINT')seg.points.forEach(coords=>drawNode(coords));
     });
+    pointChain.forEach(coords=>drawNode(coords,true));
   }
 
   function renderLiveStroke() {
@@ -1067,16 +1073,17 @@
       syncDrawButtons();
       return false;
     }
-    const seg=Plans.drawing({kind:drawStyle,points:pointChain});
+    const seg=Plans.drawing({kind:drawStyle,mode:'POINT',points:pointChain});
     if(seg){
       drawUndoHistory.push(clone(draft.drawings));
       draft.drawings.push(seg);
     }
     pointChain=[];
+    pointChainHistory=[];
     if(liveLine){liveLine.remove();liveLine=null;}
+    if(seg)routeChanged('DRAWING_POINT');
     renderPointPreview();
     syncDrawButtons();
-    if(seg)routeChanged('DRAWING_POINT');
     return Boolean(seg);
   }
 
@@ -1087,10 +1094,50 @@
     const last=pointChain[pointChain.length-1];
     // Drop accidental double taps at the same geographic location.
     if(last && map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(coords))<5)return;
+    pointChainHistory.push(clone(pointChain));
     pointChain.push(coords);
     renderLiveStroke();
     renderPointPreview();
     syncDrawButtons();
+  }
+
+  // Point-connected geometry is not erasable by scrubbing its edges.
+  // Tapping a vertex deletes only that vertex and reconnects its neighbors.
+  function erasePointVertex(event) {
+    if(!draft)return false;
+    const target=map.mouseEventToContainerPoint(event);
+    let hit=null;
+    const evaluate=(coords,source,segment,index)=>{
+      const p=map.latLngToContainerPoint(coords);
+      const distancePx=p.distanceTo(target);
+      if(distancePx<=17 && (!hit || distancePx<hit.distancePx)){
+        hit={source,segment,index,distancePx};
+      }
+    };
+    pointChain.forEach((point,i)=>evaluate(point,'pending',null,i));
+    draft.drawings.forEach((seg,segIndex)=>{
+      if(seg.mode!=='POINT')return;
+      seg.points.forEach((point,index)=>evaluate(point,'saved',segIndex,index));
+    });
+    if(!hit)return false;
+    if(hit.source==='pending'){
+      pointChainHistory.push(clone(pointChain));
+      pointChain.splice(hit.index,1);
+      renderLiveStroke();
+      renderPointPreview();
+      syncDrawButtons();
+    }else{
+      drawUndoHistory.push(clone(draft.drawings));
+      const seg=draft.drawings[hit.segment];
+      const nextPoints=seg.points.filter((_,i)=>i!==hit.index);
+      if(nextPoints.length<2)draft.drawings.splice(hit.segment,1);
+      else draft.drawings[hit.segment]={
+        ...seg,points:nextPoints
+      };
+      routeChanged('DRAW_POINT_ERASE');
+      renderPointPreview();
+    }
+    return true;
   }
 
   function midpoint(a,b) {
@@ -1101,8 +1148,8 @@
   }
 
 
-  // Erase only the portions of a polyline inside the finger's screen-space
-  // brush. Remnants are ordinary DRAW segments and survive plan save/import.
+  // Erase only FREE strokes. POINT segments are immutable between vertices;
+  // editing them is handled exclusively by erasePointVertex().
   function eraseByTrail(trail) {
     if (!draft || !trail.length || !draft.drawings.length) return;
     const brush=14;
@@ -1120,6 +1167,7 @@
     let modified=false;
     const kept=[];
     draft.drawings.forEach(seg=>{
+      if(seg.mode==='POINT'){kept.push(seg);return;}
       const pix=seg.points.map(p=>map.latLngToContainerPoint(p));
       const sampled=[];
       for(let i=1;i<pix.length;i++){
@@ -1256,7 +1304,11 @@
       if(!prior)return;
       pointerState.delete(event.pointerId);
       if(!gestureUntilClear && pointerState.size===0){
-        if(drawTool==='ERASE' && event.type==='pointerup')eraseByTrail(eraserTrail);
+        if(drawTool==='ERASE' && event.type==='pointerup'){
+          if(!prior.moved && erasePointVertex(event)){
+            // A deleted node must not also erase any overlapping free line.
+          }else eraseByTrail(eraserTrail);
+        }
         else if(drawTool==='POINT' && event.type==='pointerup' && !prior.moved)
           addPointToChain(event);
         else if(drawTool==='FREE' && event.type==='pointerup')commitStroke();
@@ -1291,6 +1343,7 @@
     $('navSessionControls').hidden=true;
     document.body.classList.add('baseline-drawing');
     bindDrawingCapture();
+    renderPointPreview();
     syncDrawButtons();
     toast('자유·점 연결 · 두 손가락 확대·이동');
   }
@@ -1304,6 +1357,7 @@
       renderPointPreview();
     }
     drawingMode=false;
+    pointChainHistory=[];
     pointerState.clear();
     currentStroke=null;
     eraserTrail=[];
@@ -1336,7 +1390,7 @@
       note.textContent=drawTool==='POINT'
         ? '점 연결 · '+pointChain.length+'개 지점 · 두 손가락 확대·이동 · 완료 시 저장'
         : drawTool==='ERASE'
-          ? '지우개 · 손가락으로 선 일부 삭제 · 두 손가락 확대·이동'
+          ? '지우개 · 점 연결선은 꼭짓점 탭 삭제 · 자유 드로잉은 문질러 삭제'
           : '자유 드로잉 · 손가락으로 그리기 · 두 손가락 확대·이동';
     }
   }
@@ -1345,10 +1399,12 @@
     const next=btn.dataset.drawTool;
     if(!['FREE','POINT','ERASE'].includes(next) || next===drawTool)return;
     if(currentStroke?.length>=2)commitStroke();
-    if(pointChain.length>=2)commitPointChain();
-    else if(pointChain.length){
+    // Keep an unfinished point chain editable when switching to/from ERASE.
+    // Commit only when leaving both POINT and ERASE for freehand drawing.
+    if(next==='FREE' && pointChain.length>=2)commitPointChain();
+    else if(next==='FREE' && pointChain.length){
       pointChain=[];
-      renderPointPreview();
+      pointChainHistory=[];
     }
     currentStroke=null;
     eraserTrail=[];
@@ -1368,23 +1424,32 @@
       renderPointPreview();
     }
     currentStroke=null;
+    pointChainHistory=[];
     drawStyle=style;
     renderLiveStroke();
     syncDrawButtons();
   }));
   $('drawUndoBtn')?.addEventListener('click',()=>{
     if(!draft)return toast('되돌릴 드로잉 없음');
-    if(drawTool==='POINT' && pointChain.length){
-      pointChain.pop();
+    if((drawTool==='POINT' || drawTool==='ERASE') && pointChainHistory.length){
+      pointChain=pointChainHistory.pop();
       renderLiveStroke();
       renderPointPreview();
       syncDrawButtons();
       return;
     }
     if(drawUndoHistory.length)draft.drawings=drawUndoHistory.pop();
+    else if(drawTool==='POINT' && pointChain.length){
+      pointChain.pop();
+      renderLiveStroke();
+      renderPointPreview();
+      syncDrawButtons();
+      return;
+    }
     else if(draft.drawings.length)draft.drawings.pop();
     else return toast('되돌릴 드로잉 없음');
     routeChanged('DRAW_UNDO');
+    renderPointPreview();
   });
   $('drawDoneBtn')?.addEventListener('click',exitDrawing);
   $('navRouteSummary')?.addEventListener('click',openEditor);
