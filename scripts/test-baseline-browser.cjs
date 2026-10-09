@@ -155,6 +155,134 @@ const server = http.createServer((req, res) => {
       assert.equal(attributionText.includes('Leaflet'), false, 'Leaflet prefix should be removed to reduce clutter');
       assert.equal(attributionText.includes('OpenStreetMap'), true, 'required map attribution must remain');
 
+      // GPS activation contract: first good location centers the map exactly
+      // once, future fixes do not hijack map gestures unless Follow is on.
+      const gpsBefore=await page.evaluate(()=>{
+        const m=BaselineApp.map,c=m.getCenter();
+        const backup={
+          center:[c.lat,c.lng],
+          zoom:m.getZoom(),
+          lastFix:BaselineState.state.lastFix,
+          geolocationDescriptor:Object.getOwnPropertyDescriptor(navigator,'geolocation')
+        };
+        window.__gpsTestBackup=backup;
+        window.__gpsMock={
+          currentId:0,
+          watchers:new Map(),
+          cleared:[],
+          watchPosition(ok,fail,options){
+            const id=++this.currentId;
+            this.watchers.set(id,{ok,fail,options});
+            return id;
+          },
+          clearWatch(id){this.cleared.push(id);},
+          success(lat,lon,id=this.currentId){
+            this.watchers.get(id)?.ok({coords:{latitude:lat,longitude:lon,accuracy:6,altitude:30}});
+          },
+          error(code=1,id=this.currentId){
+            this.watchers.get(id)?.fail({code});
+          }
+        };
+        Object.defineProperty(navigator,'geolocation',{
+          configurable:true,value:window.__gpsMock
+        });
+        return {center:backup.center,zoom:backup.zoom};
+      });
+
+      await page.locator('#gpsBtn').click();
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.enabled),true);
+      assert.equal(await page.locator('#followBtn').getAttribute('aria-pressed'),'false');
+      assert.equal(await page.evaluate(()=>BaselineApp.map.getZoom()),gpsBefore.zoom,
+        'GPS toggle must wait for the first actual fix before zooming');
+      await page.evaluate(()=>window.__gpsMock.success(37.5788,127.004));
+      const firstFix=await page.evaluate(()=>{
+        const m=BaselineApp.map,c=m.getCenter(),fix=BaselineState.state.gps.fix;
+        return {distance:m.distance(c,[fix.lat,fix.lon]),zoom:m.getZoom(),
+          follow:BaselineState.state.gps.follow};
+      });
+      assert(firstFix.distance<4 && firstFix.zoom>=15 && !firstFix.follow,
+        'first valid fix should move and zoom to live GPS, without enabling tracking');
+      await page.evaluate(()=>window.__gpsMock.success(37.61,127.05));
+      const secondFix=await page.evaluate(()=>BaselineApp.map.getCenter());
+      assert(Number.isFinite(secondFix.lat) && Number.isFinite(secondFix.lng));
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.fix.lat),37.61);
+      assert(await page.evaluate(()=>{
+        const m=BaselineApp.map;
+        return m.distance(m.getCenter(),[37.5788,127.004])<4;
+      }), 'subsequent fixes must not recenter without Follow');
+
+      const oldId=await page.evaluate(()=>window.__gpsMock.currentId);
+      await page.locator('#gpsBtn').click();
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.enabled),false);
+      const beforeStale=await page.evaluate(()=>{
+        const c=BaselineApp.map.getCenter();return [c.lat,c.lng];
+      });
+      await page.evaluate(id=>window.__gpsMock.success(35.1,129.1,id),oldId);
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.fix),null,
+        'GPS off must ignore previously queued watch callbacks');
+      assert(await page.evaluate(before=>{
+        const m=BaselineApp.map;return m.distance(m.getCenter(),before)<4;
+      },beforeStale),'stale callback after OFF must not drag map');
+
+      // If the user starts panning before the first fix, that user intent wins.
+      await page.locator('#gpsBtn').click();
+      const manualCenter=await page.evaluate(()=>{
+        const m=BaselineApp.map;
+        m.panTo([37.66,127.13],{animate:false});
+        m.fire('dragstart');
+        const c=m.getCenter();
+        return [c.lat,c.lng];
+      });
+      await page.evaluate(()=>window.__gpsMock.success(36.1,128.1));
+      assert(await page.evaluate(center=>{
+        const m=BaselineApp.map;return m.distance(m.getCenter(),center)<4;
+      },manualCenter),'dragging while waiting for GPS must cancel automatic recenter');
+      await page.locator('#gpsBtn').click();
+
+      // Follow enabled before a new fix must wait for LIVE GPS instead of
+      // jumping to the last known location or a TEMP reference.
+      await page.locator('#gpsBtn').click();
+      const pendingCenter=await page.evaluate(()=>{
+        const c=BaselineApp.map.getCenter();return [c.lat,c.lng];
+      });
+      await page.locator('#followBtn').click();
+      assert.equal(await page.locator('#followBtn').getAttribute('aria-pressed'),'true');
+      assert(await page.evaluate(center=>{
+        const m=BaselineApp.map;return m.distance(m.getCenter(),center)<4;
+      },pendingCenter),'Follow should not center on a stale fix while live GPS is pending');
+      await page.evaluate(()=>window.__gpsMock.success(37.52,126.91));
+      assert(await page.evaluate(()=>{
+        const m=BaselineApp.map;return m.distance(m.getCenter(),[37.52,126.91])<4;
+      }),'first GPS fix with Follow preenabled should still jump to live location');
+      await page.evaluate(()=>window.__gpsMock.success(37.521,126.911));
+      await page.waitForFunction(()=>{
+        const m=BaselineApp.map;
+        return m.distance(m.getCenter(),[37.521,126.911])<4;
+      },null,{timeout:3000});
+      await page.locator('#gpsBtn').click();
+
+      // A watch permission error must reset GPS state, not leave a pending
+      // recenter to be fulfilled by callbacks from the failed watch.
+      await page.locator('#gpsBtn').click();
+      await page.evaluate(()=>window.__gpsMock.error(1));
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.enabled),false);
+      await page.evaluate(()=>{
+        const backup=window.__gpsTestBackup;
+        if(backup.geolocationDescriptor)
+          Object.defineProperty(navigator,'geolocation',backup.geolocationDescriptor);
+        else delete navigator.geolocation;
+        BaselineState.state.lastFix=backup.lastFix;
+        if(backup.lastFix)
+          localStorage.setItem('tr_baseline_last_fix_v1',JSON.stringify(backup.lastFix));
+        else localStorage.removeItem('tr_baseline_last_fix_v1');
+        BaselineApp.map.setView(backup.center,backup.zoom,{animate:false});
+        BaselineApp.refresh();
+        delete window.__gpsMock;
+        delete window.__gpsTestBackup;
+      });
+      assert.equal(await page.evaluate(()=>BaselineApp.map.getZoom()),gpsBefore.zoom);
+      assert.equal(await page.evaluate(()=>BaselineState.state.gps.enabled),false);
+
       const resources = await page.evaluate(() => performance.getEntriesByType('resource').map(x => x.name));
       assert.equal(resources.some(url => /\/(?:v27|v28|v29|ep-ui|ep-runtime|ep-overlay|ep-plan|ep-mission|ep-surface)/.test(url)), false, 'BASELINE must not load legacy runtime/UI layers');
 
