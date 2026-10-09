@@ -1039,7 +1039,7 @@
       weight:2,
       opacity:.95,
       dashArray:drawStyle==='ROUTE'?'8 6':null
-    }).addTo(drawingPointLayer);
+    }).addTo(drawingLayer);
   }
 
   function commitStroke() {
@@ -1200,6 +1200,7 @@
         updateEraserCursor(null);
         currentStroke=null;
         gestureUntilClear=true;
+        if(drawTool==='FREE')renderLiveStroke();
         const pts=[...pointerState.values()].slice(0,2);
         gesture={
           mid:midpoint(pts[0],pts[1]),
