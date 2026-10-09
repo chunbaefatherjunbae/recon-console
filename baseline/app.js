@@ -1170,7 +1170,9 @@
     const anchor=resolveExploreAnchor();
     const node=$('exploreRefText');
     if(node)node.textContent=anchor.label;
-    renderExploreCircle();
+    // openSheet emits state before the range can be fitted to the viewport;
+    // never paint a 150 km outline at a zoom-16 tile scale during entry.
+    if(exploreCircle)renderExploreCircle();
   }
 
 
