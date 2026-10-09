@@ -20,6 +20,10 @@
   const drawingLayer = L.layerGroup().addTo(map);
   // Uncommitted tap-to-connect vertices must stay on the map in WGS84.
   const drawingPointLayer = L.layerGroup().addTo(map);
+  // Leaflet defaults to Canvas on RECON. Active editable geometry needs a
+  // shared crisp SVG renderer so vertices remain individually inspectable and
+  // don't flicker during erase, rotation or fractional zoom changes.
+  const drawingEditRenderer = L.svg({padding:.12});
   const pointLayer = L.layerGroup().addTo(map);
   const trackLayer = L.layerGroup().addTo(map);
   const recordPreviewLayer = L.layerGroup().addTo(map);
@@ -1017,10 +1021,12 @@
     return map.containerPointToLatLng([event.clientX-rect.left,event.clientY-rect.top]);
   }
 
-  function drawSnapshot() {
+  function drawSnapshot(pointOnly=false) {
     if(!draft)return;
+    // Tapping a new vertex changes only the pending chain, not the saved
+    // plan. Avoid deep-copying potentially huge freehand strokes on each tap.
     drawUndoHistory.push({
-      drawings:clone(draft.drawings),
+      drawings:pointOnly?null:clone(draft.drawings),
       pointChain:clone(pointChain),
       tool:drawTool,
       style:drawStyle
@@ -1039,6 +1045,7 @@
         fillColor:active?'#b9ffd0':'#04170a',
         fillOpacity:.96,
         className:'baseline-point-node',
+        renderer:drawingEditRenderer,
         interactive:false
       }).addTo(drawingPointLayer);
     };
@@ -1062,6 +1069,7 @@
       color:'#b9ffd0',
       weight:2,
       opacity:.95,
+      renderer:drawingEditRenderer,
       dashArray:drawStyle==='ROUTE'?'8 6':null
     }).addTo(drawingLayer);
   }
@@ -1111,7 +1119,7 @@
     const last=pointChain[pointChain.length-1];
     // Drop accidental double taps at the same geographic location.
     if(last && map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(coords))<5)return;
-    drawSnapshot();
+    drawSnapshot(true);
     pointChain.push(coords);
     renderLiveStroke();
     renderPointPreview();
@@ -1407,7 +1415,7 @@
     const note=$('drawModeNote');
     if(note){
       note.textContent=drawTool==='POINT'
-        ? '점 연결 · '+pointChain.length+'개 · 선 마침으로 저장 후 다음 선 시작'
+        ? '점 연결 · '+pointChain.length+'개 · 선 마침으로 추가, 이후 계획 저장'
         : drawTool==='ERASE'
           ? '지우개 · 점 연결선은 꼭짓점 탭 삭제 · 자유 드로잉은 문질러 삭제'
           : '자유 드로잉 · 손가락으로 그리기 · 두 손가락 확대·이동';
@@ -1446,13 +1454,13 @@
   }));
   $('drawFinishLineBtn')?.addEventListener('click',()=>{
     if(pointChain.length<2)return toast('직선을 만들려면 점을 2개 이상 찍어야 함');
-    if(commitPointChain())toast('연결선 저장 · 다음 선을 시작할 수 있음');
+    if(commitPointChain())toast('연결선 추가 · 완료 후 계획 저장 필요');
   });
   $('drawUndoBtn')?.addEventListener('click',()=>{
     if(!draft || !drawUndoHistory.length)return toast('되돌릴 드로잉 없음');
     // One chronological history works even across FREE, POINT and ERASE.
     const prev=drawUndoHistory.pop();
-    draft.drawings=prev.drawings;
+    if(prev.drawings!==null)draft.drawings=prev.drawings;
     pointChain=prev.pointChain;
     drawTool=prev.tool || drawTool;
     drawStyle=prev.style || drawStyle;
