@@ -26,6 +26,23 @@
   let fallbackReason=null;
   let autoFallbackTimer=null;
   let lastOnlineTileSuccessAt=Date.now();
+  let onlineRecoveryActive=false;
+  let onlineRecoveryPrimary=false;
+  let recoveryTileErrors=[];
+  // The OpenTopoMap public tile servers can throttle requests on large iPad
+  // viewports. Load OSM recovery only after a real tile error, not on startup.
+  const recoveryPane=map.createPane('onlineRecoveryPane');
+  recoveryPane.style.zIndex='195';
+  recoveryPane.style.pointerEvents='none';
+  const onlineRecoveryLayer=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    pane:'onlineRecoveryPane',
+    maxZoom:19,
+    keepBuffer:1,
+    updateWhenIdle:true,
+    updateWhenZooming:false,
+    className:'online-recovery-tiles',
+    attribution:'Map data © OpenStreetMap contributors'
+  });
 
   function cancelAutoFallback(){
     if(autoFallbackTimer!==null) clearTimeout(autoFallbackTimer);
@@ -413,6 +430,7 @@
 
   function mapStatusLabel(){
     if(effectiveMode==='lite') return 'MAP · LITE';
+    if(onlineRecoveryPrimary) return 'MAP · OSM';
     return navigator.onLine ? 'MAP · ONLINE' : 'MAP · CACHED';
   }
 
@@ -445,6 +463,7 @@
       map.attributionControl?.addAttribution(LITE_VECTOR_ATTR);
       if(map.hasLayer(App.topoLayer))map.removeLayer(App.topoLayer);
       if(map.hasLayer(App.roadBoostLayer))map.removeLayer(App.roadBoostLayer);
+      if(map.hasLayer(onlineRecoveryLayer))map.removeLayer(onlineRecoveryLayer);
       if(!map.hasLayer(terrainLayer))terrainLayer.addTo(map);
       if(!map.hasLayer(vectorLayer))vectorLayer.addTo(map);
       if(!map.hasLayer(gridLayer))gridLayer.addTo(map);
@@ -465,8 +484,16 @@
       if(map.hasLayer(vectorLayer))map.removeLayer(vectorLayer);
       if(map.hasLayer(gridLayer))map.removeLayer(gridLayer);
       if(map.hasLayer(placeLayer))map.removeLayer(placeLayer);
-      if(!map.hasLayer(App.topoLayer))App.topoLayer.addTo(map);
-      if(!map.hasLayer(App.roadBoostLayer))App.roadBoostLayer.addTo(map);
+      if(onlineRecoveryActive && !map.hasLayer(onlineRecoveryLayer)){
+        onlineRecoveryLayer.addTo(map);
+      }
+      if(onlineRecoveryPrimary){
+        if(map.hasLayer(App.topoLayer))map.removeLayer(App.topoLayer);
+        if(map.hasLayer(App.roadBoostLayer))map.removeLayer(App.roadBoostLayer);
+      }else{
+        if(!map.hasLayer(App.topoLayer))App.topoLayer.addTo(map);
+        if(!map.hasLayer(App.roadBoostLayer))App.roadBoostLayer.addTo(map);
+      }
     }
     emit(reason);
   }
@@ -476,6 +503,10 @@
     requestedMode=clean;
     fallbackReason=null;
     onlineTileErrors=[];
+    onlineRecoveryActive=false;
+    onlineRecoveryPrimary=false;
+    recoveryTileErrors=[];
+    if(map.hasLayer(onlineRecoveryLayer))map.removeLayer(onlineRecoveryLayer);
     cancelAutoFallback();
     localStorage.setItem(MODE_KEY,clean);
     applyMode('set-mode');
@@ -489,6 +520,8 @@
       requested:requestedMode,
       effective:effectiveMode,
       label:mapStatusLabel(),
+      onlineRecoveryActive,
+      onlineRecoveryPrimary,
       dataReady:Boolean(loaded && (
         (Array.isArray(Data.roads) ? Data.roads.length : Object.values(Data.roads||{}).some(list=>list?.length)) ||
         (Data.rivers||[]).length
@@ -504,19 +537,36 @@
   }
 
   function noteOnlineTileError(){
-    if(requestedMode!=='auto'||effectiveMode!=='online')return;
+    if(effectiveMode!=='online')return;
     const now=Date.now();
     onlineTileErrors=onlineTileErrors.filter(t=>now-t<5000);
     onlineTileErrors.push(now);
-    if(onlineTileErrors.length<3)return;
 
+    // A failed topo tile otherwise leaves a persistent hole. Add a real
+    // lower basemap behind it on the first failure. After repeated failures,
+    // stop the failing topo/road streams rather than endlessly retrying them.
+    if(navigator.onLine){
+      if(!onlineRecoveryActive){
+        onlineRecoveryActive=true;
+        onlineRecoveryLayer.addTo(map);
+        emit('osm-backup-ready');
+      }
+      if(onlineTileErrors.length>=3 && !onlineRecoveryPrimary){
+        onlineRecoveryPrimary=true;
+        fallbackReason='topo-errors';
+        if(map.hasLayer(App.topoLayer))map.removeLayer(App.topoLayer);
+        if(map.hasLayer(App.roadBoostLayer))map.removeLayer(App.roadBoostLayer);
+        emit('osm-backup-primary');
+      }
+    }
+
+    if(requestedMode!=='auto'||onlineRecoveryPrimary)return;
+    if(onlineTileErrors.length<3)return;
     if(!navigator.onLine){
       fallbackReason='tile-errors';
       applyMode('tile-errors');
       return;
     }
-    // Transient tile errors during zoom or delayed downloads are not
-    // evidence that the whole online basemap is unavailable.
     if(autoFallbackTimer!==null)return;
     autoFallbackTimer=setTimeout(()=>{
       autoFallbackTimer=null;
@@ -530,20 +580,45 @@
   App.topoLayer.on('tileerror',noteOnlineTileError);
   App.topoLayer.on('tileload',()=>{
     lastOnlineTileSuccessAt=Date.now();
-    onlineTileErrors=[];
+    // Success cancels offline conversion, but does not erase the recent
+    // failure count: a mosaic with holes is still a failed basemap.
     cancelAutoFallback();
+  });
+  onlineRecoveryLayer.on('tileload',()=>{
+    lastOnlineTileSuccessAt=Date.now();
+    recoveryTileErrors=[];
+    cancelAutoFallback();
+  });
+  // If both online providers are unavailable, AUTO must not leave the user
+  // staring at a blank map. Preserve the manual ONLINE choice.
+  onlineRecoveryLayer.on('tileerror',()=>{
+    if(requestedMode!=='auto' || effectiveMode!=='online')return;
+    const now=Date.now();
+    recoveryTileErrors=recoveryTileErrors.filter(t=>now-t<5000);
+    recoveryTileErrors.push(now);
+    if(recoveryTileErrors.length>=3){
+      fallbackReason='tile-errors';
+      applyMode('both-online-map-sources-unavailable');
+    }
   });
 
   window.addEventListener('online',()=>{
     cancelAutoFallback();
     onlineTileErrors=[];
     fallbackReason=null;
+    onlineRecoveryPrimary=false;
+    onlineRecoveryActive=false;
+    onlineTileErrors=[];
+    if(map.hasLayer(onlineRecoveryLayer))map.removeLayer(onlineRecoveryLayer);
     applyMode('online');
   });
   window.addEventListener('offline',()=>{
     cancelAutoFallback();
     onlineTileErrors=[];
     fallbackReason=null;
+    onlineRecoveryPrimary=false;
+    onlineRecoveryActive=false;
+    if(map.hasLayer(onlineRecoveryLayer))map.removeLayer(onlineRecoveryLayer);
     applyMode('offline');
     if(requestedMode==='auto'&&effectiveMode==='online'){
       App.topoLayer.redraw();
@@ -563,6 +638,7 @@
     status,
     applyMode,
     terrainLayer,
+    onlineRecoveryLayer,
     vectorLayer,
     secondaryRoadLayer,
     gridLayer,

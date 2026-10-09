@@ -458,6 +458,89 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('[data-explore-radius]').count(), 4);
       assert.equal(await page.locator('#exploreRegisteredBtn').count(), 1);
       assert.equal(await page.locator('#exploreWildBtn').count(), 1);
+      assert.equal(await page.evaluate(()=>BaselineApp.topoLayer.options.keepBuffer),1,
+        'iPad tiles must not preload three unseen rows in each direction');
+      assert.equal(await page.evaluate(()=>BaselineApp.roadBoostLayer.options.keepBuffer),0,
+        'secondary road tiles must stay on-screen only');
+      assert.equal(await page.evaluate(()=>BaselineApp.topoLayer.options.updateWhenIdle),true);
+
+      const checkExploreRange=async(label,km)=>{
+        const state=await page.evaluate(()=>{
+          const map=BaselineApp.map;
+          let circle=null;
+          map.eachLayer(layer=>{
+            if(layer instanceof L.Circle && layer.options.className==='explore-range-circle')circle=layer;
+          });
+          const path=circle?.getElement();
+          const m=map.getContainer().getBoundingClientRect();
+          const pathBox=path?.getBoundingClientRect();
+          const screenCenter=circle?map.latLngToContainerPoint(circle.getLatLng()):null;
+          return {
+            count:document.querySelectorAll('path.explore-range-circle').length,
+            radius:circle?.getRadius(),center:circle?[circle.getLatLng().lat,circle.getLatLng().lng]:null,
+            px:screenCenter?{x:screenCenter.x,y:screenCenter.y}:null,
+            hasStroke:path?getComputedStyle(path).strokeWidth:'0px',
+            intersects:pathBox ? pathBox.right>m.left && pathBox.left<m.right
+              && pathBox.bottom>m.top && pathBox.top<m.bottom : false,
+            zoom:map.getZoom(),mapSize:[map.getSize().x,map.getSize().y],
+            actualSize:[m.width,m.height]
+          };
+        });
+        console.log(name+' '+label+' exploration preview: '+JSON.stringify(state));
+        assert.equal(state.count,1,label+' range SVG ring should actually exist in the DOM');
+        assert.equal(state.radius,km*1000,label+' ring must use the selected physical km range');
+        assert(state.intersects,label+' ring must overlap the real map viewport');
+        assert(state.px.x>=0 && state.px.x<=state.mapSize[0] &&
+          state.px.y>=0 && state.px.y<=state.mapSize[1],
+          label+' range center must be visible');
+        assert(parseFloat(state.hasStroke)>=2,label+' ring must have a legible outline');
+        assert.equal(state.mapSize[0],state.actualSize[0]);
+        assert.equal(state.mapSize[1],state.actualSize[1]);
+      };
+
+      for(const spec of [
+        {label:'phone-portrait',width:390,height:844},
+        {label:'phone-landscape',width:844,height:390},
+        {label:'tablet-portrait',width:820,height:1100},
+        {label:'tablet-landscape',width:1180,height:820}
+      ]){
+        await page.setViewportSize({width:spec.width,height:spec.height});
+        await page.waitForTimeout(180);
+        await page.locator('[data-explore-radius="30"]').click();
+        await checkExploreRange(spec.label+'-30km',30);
+        await page.locator('[data-explore-radius="150"]').click();
+        await checkExploreRange(spec.label+'-150km',150);
+        assert.equal(await page.locator('#exploreRegisteredBtn').count(),1,
+          'changing exploration radius must not rebuild/discard the action panel');
+      }
+      await page.setViewportSize({width:390,height:844});
+      await page.waitForTimeout(220);
+
+      // No TEMP/GPS/LAST still gives an honest and usable RET radius preview.
+      const priorReference=await page.evaluate(()=>{
+        const state=BaselineState.state;
+        const stored={temp:state.temp,lastFix:state.lastFix};
+        state.lastFix=null;
+        BaselineState.clearTemp();
+        return stored;
+      });
+      await page.locator('#sheetClose').click();
+      await page.locator('.bottom-nav button[data-panel="explore"]').click();
+      assert((await page.locator('#exploreRefText').textContent()).startsWith('RET ·'),
+        'without GPS or TEMP radius search must explicitly use the map sight');
+      await page.locator('[data-explore-radius="30"]').click();
+      await checkExploreRange('no-GPS-RET-anchor',30);
+      assert.equal(await page.evaluate(()=>BaselineState.reference()),null,
+        'range preview must not impersonate a valid GPS fix');
+      await page.locator('[data-explore-radius="all"]').click();
+      assert.equal(await page.locator('path.explore-range-circle').count(),0,
+        'ALL selection removes the bounded range without retaining an orphan overlay');
+      await page.evaluate(({temp,lastFix})=>{
+        BaselineState.state.lastFix=lastFix;
+        if(temp)BaselineState.setTemp(temp);
+      },priorReference);
+      assert.equal(await page.evaluate(()=>BaselineState.reference()?.type),'TEMP');
+
       // Both random registered and new random-coordinate discoveries move
       // the underlying map before opening the information sheet.
       await page.locator('[data-explore-radius="all"]').click();
@@ -1044,6 +1127,38 @@ const server = http.createServer((req, res) => {
         await auditText('search');
         await page.locator('#sheetClose').click();
       }
+
+      // Simulate a partially unavailable OpenTopoMap service. The app must
+      // present a useful OSM background instead of leaving blank tile holes,
+      // while not downloading the second basemap on normal startup.
+      const recovery=await page.evaluate(()=>{
+        BaselineLiteMap.setMode('online');
+        const lazy=!BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer);
+        BaselineApp.topoLayer.fire('tileerror');
+        const first=BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer);
+        BaselineApp.topoLayer.fire('tileerror');
+        BaselineApp.topoLayer.fire('tileerror');
+        const recovered={
+          lazy,first,status:BaselineLiteMap.status(),
+          fallbackVisible:BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer),
+          topoActive:BaselineApp.map.hasLayer(BaselineApp.topoLayer),
+          roadActive:BaselineApp.map.hasLayer(BaselineApp.roadBoostLayer)
+        };
+        BaselineLiteMap.setMode('online');
+        recovered.reset={
+          recovered:false,
+          topoActive:BaselineApp.map.hasLayer(BaselineApp.topoLayer),
+          fallbackActive:BaselineApp.map.hasLayer(BaselineLiteMap.onlineRecoveryLayer)
+        };
+        return recovered;
+      });
+      assert(recovery.lazy && recovery.first,'OSM backup must load only after a real topo tile error');
+      assert(recovery.status.onlineRecoveryActive && recovery.status.onlineRecoveryPrimary &&
+        recovery.fallbackVisible && !recovery.topoActive && !recovery.roadActive,
+        'repeated failed topographic tiles must switch to real OSM without triple requests');
+      assert.equal(recovery.status.label,'MAP · OSM');
+      assert(recovery.reset.topoActive && !recovery.reset.fallbackActive,
+        'explicit online selection should retry the original detailed map');
 
       assert.deepEqual(errors, []);
     } catch (error) {

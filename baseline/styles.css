@@ -2686,3 +2686,18 @@ body.layer-hide-track .baseline-track-path {
   .drawing-controls button {font-size:11px;padding-inline:2px;}
   .nav-session-controls button {font-size:12px;padding-inline:3px;}
 }
+
+/* Map-coverage and exploration-range performance pass.
+   OSM fallback tiles must match the active theme filter, even though they
+   live below Leaflet's standard tile pane. */
+#map .online-recovery-tiles {
+  filter:var(--map-filter) !important;
+  image-rendering:auto;
+}
+/* A range ring belongs to the map overlay, not to the HUD. Explicit
+   high-contrast stroke makes 30/80/150 km visible on contour imagery. */
+#map .leaflet-overlay-pane .explore-range-circle {
+  stroke-linejoin:round;
+  stroke-linecap:butt;
+  filter:drop-shadow(0 1px 1px rgba(0,0,0,.9));
+}

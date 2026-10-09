@@ -26,6 +26,8 @@
   let activeSiteFilter = 'registered';
   let exploreRadius = 'all';
   let exploreCircle = null;
+  let exploreAnchor = null;
+  const exploreCircleRenderer = L.svg({padding:0.05});
   let sitePlacementActive = false;
   let sitePlacementAddressToken = 0;
   let mapSearchAddressToken = 0;
@@ -47,7 +49,10 @@
     maxNativeZoom: 17,
     maxZoom: 19,
     className: 'baseline-topo-tiles',
-    keepBuffer: 3,
+    // Avoid fetching several unseen rings of tiles on large iPad windows.
+    keepBuffer: 1,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
     attribution: 'Map data © OpenStreetMap contributors · Map style © OpenTopoMap'
   }).addTo(map);
 
@@ -61,6 +66,10 @@
     minZoom: 15,
     maxZoom: 19,
     opacity: 0.17,
+    // Road detail is supplementary: never preload deep off-screen buffers.
+    keepBuffer: 0,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
     pane: 'roadBoostPane',
     className: 'road-boost-tiles',
     attribution: ''
@@ -1040,10 +1049,32 @@
     return ref ? [Number(ref.lat), Number(ref.lon)] : null;
   }
 
+  // The range preview uses one stable geographic anchor. When GPS/TEMP/LAST
+  // is absent, deliberately fall back to the map reticle instead of silently
+  // refusing to draw. The RET anchor is a snapshot, not a circle that follows
+  // the map as the user pans.
+  function resolveExploreAnchor(reset=false) {
+    const ref=S.reference();
+    const coords=referenceCoords();
+    if(coords && coords.every(Number.isFinite)) {
+      exploreAnchor={
+        coords,
+        label:String(ref.type)+' · '+formatMgrs(ref),
+        type:String(ref.type)
+      };
+    } else if(reset || !exploreAnchor || exploreAnchor.type!=='RET') {
+      const center=map.getCenter();
+      exploreAnchor={
+        coords:[center.lat,center.lng],
+        label:'RET · 조준점 기준 · '+formatMgrs({lat:center.lat,lon:center.lng}),
+        type:'RET'
+      };
+    }
+    return exploreAnchor;
+  }
+
   function exploreReferenceText() {
-    const ref = S.reference();
-    if (!ref) return '기준 위치 없음';
-    return String(ref.type) + ' · ' + formatMgrs(ref);
+    return resolveExploreAnchor().label;
   }
 
   function clearExploreCircle() {
@@ -1053,48 +1084,95 @@
     }
   }
 
-  function renderExploreCircle() {
-    clearExploreCircle();
-    if (exploreRadius === 'all') return;
-    const coords = referenceCoords();
-    if (!coords) return;
-    exploreCircle = L.circle(coords, {
-      radius:Number(exploreRadius) * 1000,
-      interactive:false,
-      color:'#9de3a4',
-      weight:1,
-      opacity:.72,
-      fillColor:'#22ff66',
-      fillOpacity:.025,
-      dashArray:'7 7'
-    }).addTo(map);
+  function focusExploreRadius(coords,radiusKm) {
+    if(!coords || !Number.isFinite(radiusKm) || radiusKm<=0)return;
+    const mapBox=map.getContainer().getBoundingClientRect();
+    const sheet=$('sheet');
+    const sheetBox=sheet && !sheet.hidden?sheet.getBoundingClientRect():null;
+    let coveredBottom=0,coveredRight=0;
+    if(sheetBox){
+      const overlapW=Math.max(0,Math.min(mapBox.right,sheetBox.right)-Math.max(mapBox.left,sheetBox.left));
+      const overlapH=Math.max(0,Math.min(mapBox.bottom,sheetBox.bottom)-Math.max(mapBox.top,sheetBox.top));
+      if(overlapW>mapBox.width*.55) {
+        coveredBottom=Math.min(mapBox.height*.55,overlapH);
+      }else if(overlapH>mapBox.height*.35) {
+        coveredRight=Math.min(mapBox.width*.42,overlapW);
+      }
+    }
+    const dLat=radiusKm/110.6;
+    const dLon=radiusKm/(111.32*Math.max(.1,Math.cos(coords[0]*Math.PI/180)));
+    // Fit BEFORE drawing, otherwise large geodesic circles at zoom 15+
+    // can trigger expensive canvas drawing/huge SVG geometries on iPad.
+    if(S.state.gps.follow)S.setFollow(false);
+    map.fitBounds([
+      [coords[0]-dLat,coords[1]-dLon],
+      [coords[0]+dLat,coords[1]+dLon]
+    ],{
+      animate:false,
+      maxZoom:11,
+      paddingTopLeft:[20,20],
+      paddingBottomRight:[Math.round(20+coveredRight),Math.round(20+coveredBottom)]
+    });
+  }
+
+  function renderExploreCircle({focus=false}={}) {
+    if(exploreRadius==='all') {
+      clearExploreCircle();
+      return;
+    }
+    const anchor=resolveExploreAnchor();
+    const coords=anchor?.coords;
+    const radiusKm=Number(exploreRadius);
+    if(!coords || !Number.isFinite(radiusKm) || radiusKm<=0) {
+      clearExploreCircle();
+      return;
+    }
+    if(focus)focusExploreRadius(coords,radiusKm);
+    if(!exploreCircle){
+      exploreCircle=L.circle(coords,{
+        radius:radiusKm*1000,
+        renderer:exploreCircleRenderer,
+        className:'explore-range-circle',
+        interactive:false,
+        color:'#b9ffd0',
+        weight:2.2,
+        opacity:1,
+        fillColor:'#22ff66',
+        fillOpacity:.055,
+        dashArray:'8 6'
+      }).addTo(map);
+    }else{
+      // Reuse one overlay rather than remove, create and reproject on each
+      // button press or location fix.
+      exploreCircle.setLatLng(coords);
+      exploreCircle.setRadius(radiusKm*1000);
+    }
   }
 
   function exploreHtml() {
-    const ref = S.reference();
-    const refText = ref ? exploreReferenceText() : '기준 위치 없음 · 범위 탐색은 GPS/TEMP/LAST 필요';
-    const rangeButtons = Explore.RADII.map(value => {
-      const key = String(value);
-      const label = value === 'all' ? '전체' : value + 'km';
-      return '<button type="button" data-explore-radius="' + key + '" class="' + (String(exploreRadius) === key ? 'active' : '') + '">' + label + '</button>';
+    const refText=exploreReferenceText();
+    const rangeButtons=Explore.RADII.map(value=>{
+      const key=String(value);
+      const label=value==='all'?'전체':value+'km';
+      return '<button type="button" data-explore-radius="'+key+'" class="'+(String(exploreRadius)===key?'active':'')+'">'+label+'</button>';
     }).join('');
 
-    return '<div class="explore-ref"><small>탐색 기준</small><strong id="exploreRefText">' + esc(refText) + '</strong></div>' +
-      '<div class="explore-range">' + rangeButtons + '</div>' +
-      '<div class="explore-actions">' +
-        '<button type="button" id="exploreRegisteredBtn">등록 거점 추첨<span>미개척 등록 거점에서 무작위 선택</span></button>' +
-        '<button type="button" id="exploreWildBtn">무작위 좌표<span>좌표를 생성하고 내 거점에 저장</span></button>' +
-      '</div>' +
-      '<div class="explore-foot">범위 지정 시 현재 기준 위치를 중심으로 탐색합니다. ALL은 등록 전체 또는 기존 전국 산악 탐색 권역을 사용합니다.</div>';
+    return '<div class="explore-ref"><small>탐색 기준</small><strong id="exploreRefText">'+esc(refText)+'</strong></div>'+
+      '<div class="explore-range">'+rangeButtons+'</div>'+
+      '<div class="explore-actions">'+
+        '<button type="button" id="exploreRegisteredBtn">등록 거점 추첨<span>미개척 등록 거점에서 무작위 선택</span></button>'+
+        '<button type="button" id="exploreWildBtn">무작위 좌표<span>좌표를 생성하고 내 거점에 저장</span></button>'+
+      '</div>'+
+      '<div class="explore-foot">선택한 범위는 기준 위치를 중심으로 지도에 표시합니다. GPS/TEMP가 없으면 현재 조준점 좌표를 사용합니다. 전체는 전국 탐색 권역을 사용합니다.</div>';
   }
 
   function updateExploreReference() {
-    const node = $('exploreRefText');
-    if (node) {
-      const ref = S.reference();
-      node.textContent = ref ? exploreReferenceText() : '기준 위치 없음 · 범위 탐색은 GPS/TEMP/LAST 필요';
-    }
-    renderExploreCircle();
+    const anchor=resolveExploreAnchor();
+    const node=$('exploreRefText');
+    if(node)node.textContent=anchor.label;
+    // openSheet emits state before the range can be fitted to the viewport;
+    // never paint a 150 km outline at a zoom-16 tile scale during entry.
+    if(exploreCircle)renderExploreCircle();
   }
 
 
@@ -1108,18 +1186,24 @@
   function bindExplorePanel() {
     document.querySelectorAll('[data-explore-radius]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const raw = btn.dataset.exploreRadius;
-        exploreRadius = raw === 'all' ? 'all' : Number(raw);
-        openExplore();
+        const raw=btn.dataset.exploreRadius;
+        const next=raw==='all'?'all':Number(raw);
+        if(next===exploreRadius){
+          if(next!=='all')renderExploreCircle({focus:true});
+          return;
+        }
+        exploreRadius=next;
+        document.querySelectorAll('[data-explore-radius]').forEach(item=>{
+          const active=item.dataset.exploreRadius===String(next);
+          item.classList.toggle('active',active);
+          item.setAttribute('aria-pressed',String(active));
+        });
+        renderExploreCircle({focus:true});
       });
     });
 
     $('exploreRegisteredBtn')?.addEventListener('click', () => {
-      const ref = referenceCoords();
-      if (exploreRadius !== 'all' && !ref) {
-        toast('범위 탐색 기준 위치 없음');
-        return;
-      }
+      const ref = resolveExploreAnchor().coords;
 
       const available = Sites.getRegistered().filter(site => site.status !== 'SECURED');
       const picked = Explore.randomRegistered(available, exploreRadius, ref);
@@ -1132,11 +1216,7 @@
     });
 
     $('exploreWildBtn')?.addEventListener('click', () => {
-      const ref = referenceCoords();
-      if (exploreRadius !== 'all' && !ref) {
-        toast('범위 탐색 기준 위치 없음');
-        return;
-      }
+      const ref = resolveExploreAnchor().coords;
 
       const wild = Explore.randomWild(exploreRadius, ref);
       if (!wild) {
@@ -1155,9 +1235,13 @@
   }
 
   function openExplore() {
+    resolveExploreAnchor(true);
     openSheet('explore', { title:'탐색', html:exploreHtml() });
     bindExplorePanel();
-    renderExploreCircle();
+    document.querySelectorAll('[data-explore-radius]').forEach(item=>{
+      item.setAttribute('aria-pressed',String(item.dataset.exploreRadius===String(exploreRadius)));
+    });
+    renderExploreCircle({focus:exploreRadius!=='all'});
   }
 
   const panels = {
