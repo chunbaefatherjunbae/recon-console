@@ -1471,7 +1471,9 @@
     if(mapResizeFrame)return;
     mapResizeFrame=requestAnimationFrame(()=>{
       mapResizeFrame=0;
-      map.invalidateSize({pan:false,debounceMoveend:true});
+      // Leaflet must pan by the viewport-center delta to retain geographic
+      // center. pan:false leaves map pins at the former screen-center pixel.
+      map.invalidateSize({pan:true,debounceMoveend:true});
       renderReticleCoordinate();
       renderScale();
     });
