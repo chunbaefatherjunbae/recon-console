@@ -33,7 +33,6 @@
   let liveLine = null;
   let currentStroke = null;
   let pointChain = [];
-  let pointChainHistory = [];
   let pointerState = new Map();
   let gesture = null;
   let gestureUntilClear = false;
@@ -1018,6 +1017,12 @@
     return map.containerPointToLatLng([event.clientX-rect.left,event.clientY-rect.top]);
   }
 
+  function drawSnapshot() {
+    if(!draft)return;
+    drawUndoHistory.push({drawings:clone(draft.drawings),pointChain:clone(pointChain)});
+    if(drawUndoHistory.length>150)drawUndoHistory.shift();
+  }
+
   function renderPointPreview() {
     drawingPointLayer.clearLayers();
     if(!drawingMode || !['POINT','ERASE'].includes(drawTool))return;
@@ -1064,7 +1069,7 @@
     }
     const seg=Plans.drawing({kind:drawStyle,points:currentStroke});
     if (seg) {
-      drawUndoHistory.push(clone(draft.drawings));
+      drawSnapshot();
       draft.drawings.push(seg);
     }
     currentStroke=null;
@@ -1083,11 +1088,10 @@
     }
     const seg=Plans.drawing({kind:drawStyle,mode:'POINT',points:pointChain});
     if(seg){
-      drawUndoHistory.push(clone(draft.drawings));
+      drawSnapshot();
       draft.drawings.push(seg);
     }
     pointChain=[];
-    pointChainHistory=[];
     if(liveLine){liveLine.remove();liveLine=null;}
     if(seg)routeChanged('DRAWING_POINT');
     renderPointPreview();
@@ -1102,49 +1106,48 @@
     const last=pointChain[pointChain.length-1];
     // Drop accidental double taps at the same geographic location.
     if(last && map.latLngToContainerPoint(last).distanceTo(map.latLngToContainerPoint(coords))<5)return;
-    pointChainHistory.push(clone(pointChain));
+    drawSnapshot();
     pointChain.push(coords);
     renderLiveStroke();
     renderPointPreview();
     syncDrawButtons();
   }
 
-  // Point-connected geometry is not erasable by scrubbing its edges.
-  // Tapping a vertex deletes only that vertex and reconnects its neighbors.
-  function erasePointVertex(event) {
-    if(!draft)return false;
-    const target=map.mouseEventToContainerPoint(event);
-    let hit=null;
-    const evaluate=(coords,source,segment,index)=>{
-      const p=map.latLngToContainerPoint(coords);
-      const distancePx=p.distanceTo(target);
-      if(distancePx<=17 && (!hit || distancePx<hit.distancePx)){
-        hit={source,segment,index,distancePx};
-      }
+  // An eraser stroke can hit one or several vertices, but never erases
+  // intermediate segments of a connected-line drawing. Neighbors reconnect.
+  function erasePointVertices(trail) {
+    if(!draft || !trail.length)return false;
+    const distanceToSegment=(p,a,b)=>{
+      const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+      const t=den?Math.max(0,Math.min(1,
+        ((p.x-a.x)*dx+(p.y-a.y)*dy)/den)):0;
+      return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
     };
-    pointChain.forEach((point,i)=>evaluate(point,'pending',null,i));
-    draft.drawings.forEach((seg,segIndex)=>{
-      if(seg.mode!=='POINT')return;
-      seg.points.forEach((point,index)=>evaluate(point,'saved',segIndex,index));
+    const near=p=>{
+      const pix=map.latLngToContainerPoint(p);
+      if(trail.length===1)return distance(pix,trail[0])<=17;
+      for(let i=1;i<trail.length;i++){
+        if(distanceToSegment(pix,trail[i-1],trail[i])<=17)return true;
+      }
+      return false;
+    };
+    const remain=pointChain.filter(p=>!near(p));
+    let changed=remain.length!==pointChain.length;
+    const segments=[];
+    draft.drawings.forEach(seg=>{
+      if(seg.mode!=='POINT'){segments.push(seg);return;}
+      const points=seg.points.filter(p=>!near(p));
+      if(points.length!==seg.points.length)changed=true;
+      if(points.length>=2){
+        segments.push(points.length===seg.points.length?seg:{...seg,points});
+      }
     });
-    if(!hit)return false;
-    if(hit.source==='pending'){
-      pointChainHistory.push(clone(pointChain));
-      pointChain.splice(hit.index,1);
-      renderLiveStroke();
-      renderPointPreview();
-      syncDrawButtons();
-    }else{
-      drawUndoHistory.push(clone(draft.drawings));
-      const seg=draft.drawings[hit.segment];
-      const nextPoints=seg.points.filter((_,i)=>i!==hit.index);
-      if(nextPoints.length<2)draft.drawings.splice(hit.segment,1);
-      else draft.drawings[hit.segment]={
-        ...seg,points:nextPoints
-      };
-      routeChanged('DRAW_POINT_ERASE');
-      renderPointPreview();
-    }
+    if(!changed)return false;
+    drawSnapshot();
+    pointChain=remain;
+    draft.drawings=segments;
+    routeChanged('DRAW_POINT_ERASE');
+    syncDrawButtons();
     return true;
   }
 
@@ -1156,8 +1159,7 @@
   }
 
 
-  // Erase only FREE strokes. POINT segments are immutable between vertices;
-  // editing them is handled exclusively by erasePointVertex().
+  // Erase only FREE strokes. POINT geometry is edited by erasePointVertices().
   function eraseByTrail(trail) {
     if (!draft || !trail.length || !draft.drawings.length) return;
     const brush=14;
@@ -1207,7 +1209,7 @@
       flush();
     });
     if(!modified)return;
-    drawUndoHistory.push(clone(draft.drawings));
+    drawSnapshot();
     draft.drawings=kept;
     routeChanged('DRAW_ERASE');
   }
@@ -1313,9 +1315,10 @@
       pointerState.delete(event.pointerId);
       if(!gestureUntilClear && pointerState.size===0){
         if(drawTool==='ERASE' && event.type==='pointerup'){
-          if(!prior.moved && erasePointVertex(event)){
-            // A deleted node must not also erase any overlapping free line.
-          }else eraseByTrail(eraserTrail);
+          // Prefer deleting selected vertices; do not erase a freehand line
+          // in the same gesture that edits a connected-line node.
+          const trail=eraserTrail.length?eraserTrail:[drawPixel(event)];
+          if(!erasePointVertices(trail))eraseByTrail(trail);
         }
         else if(drawTool==='POINT' && event.type==='pointerup' && !prior.moved)
           addPointToChain(event);
@@ -1365,7 +1368,6 @@
       renderPointPreview();
     }
     drawingMode=false;
-    pointChainHistory=[];
     pointerState.clear();
     currentStroke=null;
     eraserTrail=[];
@@ -1412,8 +1414,7 @@
     if(next==='FREE' && pointChain.length>=2)commitPointChain();
     else if(next==='FREE' && pointChain.length){
       pointChain=[];
-      pointChainHistory=[];
-    }
+      }
     currentStroke=null;
     eraserTrail=[];
     updateEraserCursor(null);
@@ -1435,26 +1436,15 @@
     syncDrawButtons();
   }));
   $('drawUndoBtn')?.addEventListener('click',()=>{
-    if(!draft)return toast('되돌릴 드로잉 없음');
-    if((drawTool==='POINT' || drawTool==='ERASE') && pointChainHistory.length){
-      pointChain=pointChainHistory.pop();
-      renderLiveStroke();
-      renderPointPreview();
-      syncDrawButtons();
-      return;
-    }
-    if(drawUndoHistory.length)draft.drawings=drawUndoHistory.pop();
-    else if(drawTool==='POINT' && pointChain.length){
-      pointChain.pop();
-      renderLiveStroke();
-      renderPointPreview();
-      syncDrawButtons();
-      return;
-    }
-    else if(draft.drawings.length)draft.drawings.pop();
-    else return toast('되돌릴 드로잉 없음');
+    if(!draft || !drawUndoHistory.length)return toast('되돌릴 드로잉 없음');
+    // One chronological history works even across FREE, POINT and ERASE.
+    const prev=drawUndoHistory.pop();
+    draft.drawings=prev.drawings;
+    pointChain=prev.pointChain;
     routeChanged('DRAW_UNDO');
+    renderLiveStroke();
     renderPointPreview();
+    syncDrawButtons();
   });
   $('drawDoneBtn')?.addEventListener('click',exitDrawing);
   $('navRouteSummary')?.addEventListener('click',openEditor);
