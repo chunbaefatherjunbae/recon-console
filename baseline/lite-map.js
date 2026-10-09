@@ -28,6 +28,7 @@
   let lastOnlineTileSuccessAt=Date.now();
   let onlineRecoveryActive=false;
   let onlineRecoveryPrimary=false;
+  let recoveryTileErrors=[];
   // The OpenTopoMap public tile servers can throttle requests on large iPad
   // viewports. Load OSM recovery only after a real tile error, not on startup.
   const recoveryPane=map.createPane('onlineRecoveryPane');
@@ -504,6 +505,7 @@
     onlineTileErrors=[];
     onlineRecoveryActive=false;
     onlineRecoveryPrimary=false;
+    recoveryTileErrors=[];
     if(map.hasLayer(onlineRecoveryLayer))map.removeLayer(onlineRecoveryLayer);
     cancelAutoFallback();
     localStorage.setItem(MODE_KEY,clean);
@@ -584,7 +586,20 @@
   });
   onlineRecoveryLayer.on('tileload',()=>{
     lastOnlineTileSuccessAt=Date.now();
+    recoveryTileErrors=[];
     cancelAutoFallback();
+  });
+  // If both online providers are unavailable, AUTO must not leave the user
+  // staring at a blank map. Preserve the manual ONLINE choice.
+  onlineRecoveryLayer.on('tileerror',()=>{
+    if(requestedMode!=='auto' || effectiveMode!=='online')return;
+    const now=Date.now();
+    recoveryTileErrors=recoveryTileErrors.filter(t=>now-t<5000);
+    recoveryTileErrors.push(now);
+    if(recoveryTileErrors.length>=3){
+      fallbackReason='tile-errors';
+      applyMode('both-online-map-sources-unavailable');
+    }
   });
 
   window.addEventListener('online',()=>{
