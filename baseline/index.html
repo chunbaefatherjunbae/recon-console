@@ -15,9 +15,13 @@
   <main id="app" aria-label="RECON CONSOLE BASELINE">
     <div id="map" aria-label="지도">
       <div class="reticle" aria-hidden="true">
-        <i class="reticle-h"></i>
-        <i class="reticle-v"></i>
-        <i class="reticle-core"></i>
+        <svg class="reticle-sight" viewBox="0 0 64 64" focusable="false" aria-hidden="true">
+          <!-- C-2: four independent angle brackets; no ring or connected cross. -->
+          <path class="reticle-brackets" d="M18 8H8V18 M46 8H56V18 M8 46V56H18 M56 46V56H46"/>
+          <path class="reticle-ticks" d="M32 19V24 M32 40V45 M19 32H24 M40 32H45"/>
+          <!-- The only aiming origin is the central 3-unit point (32,32). -->
+          <rect class="reticle-point" x="30.5" y="30.5" width="3" height="3" rx=".4"/>
+        </svg>
       </div>
     </div>
     <div class="map-tech-grid" aria-hidden="true"></div>

@@ -516,12 +516,14 @@
 
 
   function clearSelectedMapPoint() {
+    document.body.classList.remove('baseline-point-selected');
     if(!selectedMapMarker)return;
     selectedMapMarker.remove();
     selectedMapMarker=null;
   }
 
   function showSelectedMapPoint(point) {
+    document.body.classList.add('baseline-point-selected');
     const position=[point.lat,point.lon];
     if(!selectedMapMarker){
       const icon=L.divIcon({
@@ -1205,6 +1207,7 @@
     $('sheetTitle').textContent = spec.title;
     $('sheetBody').innerHTML = spec.html;
     $('sheet').hidden = false;
+    document.body.classList.toggle('baseline-site-selected',panel==='sites' && spec.title==='거점 정보');
     S.setPanel(panel);
     setActiveNav(panel);
     setActiveQuick(panel);
@@ -1213,6 +1216,7 @@
   function closeSheet() {
     if (S.state.activePanel === 'explore') clearExploreCircle();
     if (S.state.activePanel === 'map-point') clearSelectedMapPoint();
+    document.body.classList.remove('baseline-site-selected');
     $('sheet').hidden = true;
     S.setPanel(null);
     setActiveNav(null);

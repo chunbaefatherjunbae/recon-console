@@ -86,8 +86,32 @@ const server = http.createServer((req, res) => {
         'upper POS background and vertical accent line must share identical vertical bounds');
       assert.equal(await page.locator('.position-hud').evaluate(el => getComputedStyle(el,'::before').backgroundColor), 'rgba(0, 8, 3, 0.21)');
       assert.equal(await page.locator('.position-hud').evaluate(el => getComputedStyle(el,'::after').content !== 'none'), true);
-      assert.equal(await page.locator('.reticle').evaluate(el => getComputedStyle(el,'::before').content !== 'none'), true);
-      assert.equal(await page.locator('.reticle-core').evaluate(el => getComputedStyle(el,'::after').content !== 'none'), true);
+      // C-2 optical reticle is a single coordinate-anchored SVG:
+      // exactly 4 brackets, 4 isolated ticks and one central point.
+      const sight=await page.locator('.reticle').evaluate(el=>{
+        const svg=el.querySelector('svg.reticle-sight');
+        const brackets=svg.querySelector('.reticle-brackets');
+        const ticks=svg.querySelector('.reticle-ticks');
+        const dot=svg.querySelector('.reticle-point');
+        const bounds=el.getBoundingClientRect();
+        const box=dot.getBoundingClientRect();
+        return {
+          svgCount:el.querySelectorAll('svg').length,
+          circles:el.querySelectorAll('circle, ellipse').length,
+          brackets:brackets.getAttribute('d').match(/M/g)?.length,
+          ticks:ticks.getAttribute('d').match(/M/g)?.length,
+          filledPoint:dot.getAttribute('width')==='3' && dot.getAttribute('height')==='3',
+          dotOffset:Math.hypot(box.left+box.width/2-bounds.left-bounds.width/2,
+            box.top+box.height/2-bounds.top-bounds.height/2),
+          opacity:getComputedStyle(el).opacity,
+          pointerEvents:getComputedStyle(el).pointerEvents
+        };
+      });
+      assert.deepEqual([sight.svgCount,sight.circles,sight.brackets,sight.ticks],
+        [1,0,4,4],'C-2 must have four corner brackets and four separated sight ticks, no rings');
+      assert(sight.filledPoint && sight.dotOffset<=.5,'3-unit target point must be geometrically centered');
+      assert.equal(sight.opacity,'0.78','C-2 default mode is visually restrained');
+      assert.equal(sight.pointerEvents,'none','reticle must never block map touch gestures');
       assert.equal(await page.locator('.map-tech-grid').count(), 1);
       assert.equal(await page.locator('#layerBtn').count(), 1);
       assert.equal(await page.locator('.position-hud').evaluate(el => getComputedStyle(el,'::before').content !== 'none'), true);
@@ -216,6 +240,8 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#mapPointClear').count(), 1);
       assert.equal(await page.locator('.map-selected-icon').count(), 1,'selected map point must have its own marker');
       assert.equal(await page.locator('.map-selected-caption').textContent(),'선택');
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'1',
+        'map-point selection must boost C-2 contrast without changing its geometry');
       const selectionCoords=await page.evaluate(() => {
         const item=document.querySelector('.map-selected-icon');
         const box=item.getBoundingClientRect();
@@ -228,6 +254,8 @@ const server = http.createServer((req, res) => {
       await page.locator('#sheetClose').click();
       assert.equal(await page.locator('.map-selected-icon').count(),0,
         'selected marker must be removed on card dismissal');
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'0.78',
+        'dismissing a selected point must restore the C-2 default contrast');
 
       await page.locator('#map').dispatchEvent('pointerup',{
         pointerId:771,pointerType:'touch',isPrimary:true,button:0,
@@ -346,6 +374,8 @@ const server = http.createServer((req, res) => {
       const firstRegisteredId=await page.locator('.site-row').first().getAttribute('data-site-id');
       await page.locator('.site-row').first().click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '거점 정보');
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'1',
+        'opening a site must boost C-2 contrast');
       assert(await page.locator('#siteMapGo').isVisible());
       assert.equal(await page.locator('#siteSecureToggle').textContent(), '개척 완료');
       await page.locator('#siteSecureToggle').click();
@@ -359,6 +389,8 @@ const server = http.createServer((req, res) => {
         const c=BaselineApp.map.getCenter(),s=BaselineSites.find(id);
         return Math.abs(c.lat-s.coords[0])<0.000003 && Math.abs(c.lng-s.coords[1])<0.000003;
       },firstRegisteredId);
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'0.78',
+        'returning to the map closes the selected-site emphasis');
       const measureSiteReticle=async(label,siteId=firstRegisteredId)=>{
         const metrics=await page.evaluate(id=>{
           const site=BaselineSites.find(id),map=BaselineApp.map,
@@ -564,6 +596,8 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#sheet').isHidden(), true);
       assert.equal(await page.locator('#navRouteSummary').isVisible(), true);
       assert.equal(await page.locator('#navigationHud').isVisible(), true);
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'1',
+        'active PLAN/NAV must boost C-2 contrast');
       const navLegibility=await page.evaluate(() => {
         const hud=document.getElementById('navigationHud');
         const pos=document.getElementById('positionHud');
@@ -687,6 +721,8 @@ const server = http.createServer((req, res) => {
 
       await page.locator('[data-nav-action="CLOSE"]').click();
       assert.equal(await page.locator('#navRouteSummary').isHidden(), true);
+      assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'0.78',
+        'closing PLAN must restore default sight contrast');
       assert.notEqual(await page.locator('.site-map-marker-wrap').first().evaluate(el => getComputedStyle(el).display), 'none', 'site markers must return when plan view closes');
       await page.locator('.bottom-nav button[data-panel="plans"]').click();
       assert.equal(await page.locator('#planContinueBtn').count(), 1);
