@@ -2701,3 +2701,59 @@ body.layer-hide-track .baseline-track-path {
   stroke-linecap:butt;
   filter:drop-shadow(0 1px 1px rgba(0,0,0,.9));
 }
+
+/* Distinct drawing tool/style axes: legible across phone, iPad and split view. */
+.drawing-controls {
+  right:auto;
+  width:min(580px,calc(100vw - var(--safe-left) - var(--safe-right) - 16px));
+  display:grid;
+  grid-auto-flow:row;
+  grid-auto-columns:auto;
+  grid-template-columns:minmax(0,1fr);
+  gap:5px;
+  padding:6px;
+  border:1px solid var(--border-accent);
+  border-left:2px solid var(--accent);
+  border-radius:3px;
+  background:var(--bg-panel);
+  box-shadow:0 2px 12px rgba(0,0,0,.48);
+}
+.drawing-tool-row,.drawing-action-row {
+  min-width:0;
+  display:grid;
+  gap:5px;
+}
+.drawing-tool-row {grid-template-columns:repeat(3,minmax(0,1fr));}
+.drawing-action-row {grid-template-columns:repeat(4,minmax(0,1fr));}
+.drawing-controls .drawing-tool-row button,
+.drawing-controls .drawing-action-row button {
+  min-width:0;
+  min-height:36px;
+  border-radius:2px;
+  font-size:12px;
+  font-weight:600;
+  white-space:nowrap;
+  padding:3px 2px;
+}
+.drawing-mode-note {
+  display:block;
+  min-width:0;
+  padding-left:3px;
+  color:var(--text-dim);
+  font-size:11px;
+  font-weight:500;
+  line-height:1.25;
+  letter-spacing:0;
+  white-space:normal;
+}
+#map .leaflet-overlay-pane .baseline-point-preview {
+  filter:drop-shadow(0 1px 2px #020904);
+}
+#map .leaflet-overlay-pane .baseline-point-node {
+  filter:drop-shadow(0 1px 2px #020904);
+}
+@media (max-width:370px) {
+  .drawing-controls .drawing-tool-row button,
+  .drawing-controls .drawing-action-row button {font-size:11px;}
+  .drawing-mode-note {font-size:10px;}
+}
