@@ -1140,6 +1140,30 @@
     syncDrawButtons();
   }
 
+  // One eraser drag is one undo action. Only the first modification captures
+  // the prior plan, avoiding a huge JSON clone on every pointermove.
+  function markEraserChange() {
+    if(!eraserSnapshotTaken){
+      drawSnapshot();
+      eraserSnapshotTaken=true;
+    }
+    eraserStrokeChanged=true;
+  }
+
+  function finishEraserGesture() {
+    if(eraserStrokeChanged)routeChanged('DRAW_ERASE_LIVE');
+    eraserSnapshotTaken=false;
+    eraserStrokeChanged=false;
+    eraserTrail=[];
+  }
+
+  function eraseEagerly(step){
+    if(!step.length)return;
+    // Touching a connected-line vertex only changes vertices. Never
+    // accidentally gouge an underlying freehand stroke in the same step.
+    if(!erasePointVertices(step))eraseByTrail(step);
+  }
+
   // An eraser stroke can hit one or several vertices, but never erases
   // intermediate segments of a connected-line drawing. Neighbors reconnect.
   function erasePointVertices(trail) {
@@ -1170,10 +1194,12 @@
       }
     });
     if(!changed)return false;
-    drawSnapshot();
+    markEraserChange();
     pointChain=remain;
     draft.drawings=segments;
-    routeChanged('DRAW_POINT_ERASE');
+    renderSavedDrawings();
+    renderLiveStroke();
+    renderPointPreview();
     syncDrawButtons();
     return true;
   }
@@ -1206,6 +1232,17 @@
     draft.drawings.forEach(seg=>{
       if(seg.mode==='POINT'){kept.push(seg);return;}
       const pix=seg.points.map(p=>map.latLngToContainerPoint(p));
+      // Quick reject remote strokes. The old eraser sampled every polyline
+      // on every move, including those nowhere near the finger.
+      const trailXs=trail.map(p=>p.x),trailYs=trail.map(p=>p.y);
+      const minX=Math.min(...trailXs)-brush,maxX=Math.max(...trailXs)+brush;
+      const minY=Math.min(...trailYs)-brush,maxY=Math.max(...trailYs)+brush;
+      if(!pix.some(p=>p.x>=minX&&p.x<=maxX&&p.y>=minY&&p.y<=maxY) &&
+        !pix.slice(1).some((p,i)=>{
+          const a=pix[i];
+          return Math.max(p.x,a.x)>=minX&&Math.min(p.x,a.x)<=maxX&&
+            Math.max(p.y,a.y)>=minY&&Math.min(p.y,a.y)<=maxY;
+        })) {kept.push(seg);return;}
       const sampled=[];
       for(let i=1;i<pix.length;i++){
         const a=pix[i-1],b=pix[i];
@@ -1236,9 +1273,9 @@
       flush();
     });
     if(!modified)return;
-    drawSnapshot();
+    markEraserChange();
     draft.drawings=kept;
-    routeChanged('DRAW_ERASE');
+    renderSavedDrawings();
   }
 
   function drawPixel(event) {
