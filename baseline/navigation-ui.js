@@ -1292,6 +1292,39 @@
     node.style.top=p.y+'px';
   }
 
+  // Apply one combined center/zoom update per animation frame. The old
+  // panBy + setZoomAround combination invalidated the map twice and snapped
+  // every .12 zoom step, which visibly jerked on iPad pinch gestures.
+  function applyPinchFrame(){
+    const next=gestureNext;
+    gestureNext=null;
+    if(!drawingMode || !gesture || !next)return;
+    const rect=$('drawingCapture').getBoundingClientRect();
+    const oldAnchor=L.point(gesture.mid.x-rect.left,gesture.mid.y-rect.top);
+    const nextAnchor=L.point(next.mid.x-rect.left,next.mid.y-rect.top);
+    const anchoredLocation=map.containerPointToLatLng(oldAnchor);
+    const nextZoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
+      gesture.zoom+Math.log2(next.dist/gesture.startDist)));
+    // Keep the same geographic point beneath the moving fingers while both
+    // the midpoint and pinch scale change. This is a single Leaflet update.
+    const world=map.project(anchoredLocation,nextZoom);
+    const targetCenter=map.unproject(world.add(map.getSize().divideBy(2)).subtract(nextAnchor),nextZoom);
+    if(Number.isFinite(targetCenter.lat)&&Number.isFinite(targetCenter.lng))
+      map.setView(targetCenter,nextZoom,{animate:false});
+    gesture.mid=next.mid;
+  }
+  function flushPinchFrame(){
+    if(gestureFrame){cancelAnimationFrame(gestureFrame);gestureFrame=0;}
+    applyPinchFrame();
+  }
+  function schedulePinchFrame(){
+    if(gestureFrame)return;
+    gestureFrame=requestAnimationFrame(()=>{
+      gestureFrame=0;
+      applyPinchFrame();
+    });
+  }
+
   function bindDrawingCapture() {
     const capture=$('drawingCapture');
     if (!capture || capture.dataset.bound === '1') return;
@@ -1308,7 +1341,10 @@
 
       if (pointerState.size===1 && !gestureUntilClear) {
         if(drawTool==='ERASE'){
+          eraserSnapshotTaken=false;
+          eraserStrokeChanged=false;
           eraserTrail=[drawPixel(event)];
+          eraseEagerly(eraserTrail);
           updateEraserCursor(event);
           currentStroke=null;
         }else if(drawTool==='FREE'){
@@ -1318,7 +1354,7 @@
         }
         // POINT waits until pointerup. No vertex is added by a swipe.
       }else if(pointerState.size>=2){
-        eraserTrail=[];
+        if(drawTool==='ERASE')finishEraserGesture();
         updateEraserCursor(null);
         currentStroke=null;
         gestureUntilClear=true;
@@ -1347,19 +1383,16 @@
         const nextMid=midpoint(pts[0],pts[1]);
         const nextDist=Math.max(1,distance(pts[0],pts[1]));
         if(gesture){
-          map.panBy([gesture.mid.x-nextMid.x,gesture.mid.y-nextMid.y],{animate:false});
-          const rect=capture.getBoundingClientRect();
-          const anchor=L.point(nextMid.x-rect.left,nextMid.y-rect.top);
-          const zoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
-            gesture.zoom+Math.log2(nextDist/gesture.startDist)));
-          if(Math.abs(zoom-map.getZoom())>=.12)
-            map.setZoomAround(anchor,zoom,{animate:false});
-          gesture.mid=nextMid;
+          gestureNext={mid:nextMid,dist:nextDist};
+          schedulePinchFrame();
         }
       }else if(!gestureUntilClear && drawTool==='ERASE'){
         const next=drawPixel(event);
-        if(!eraserTrail.length || distance(next,eraserTrail[eraserTrail.length-1])>3)
-          eraserTrail.push(next);
+        const last=eraserTrail[eraserTrail.length-1];
+        if(!last || distance(last,next)>1){
+          eraseEagerly(last?[last,next]:[next]);
+          eraserTrail=[next];
+        }
         updateEraserCursor(event);
       }else if(!gestureUntilClear && drawTool==='FREE' && currentStroke){
         const ll=drawLatLng(event);
@@ -1376,13 +1409,16 @@
     const end=event=>{
       const prior=pointerState.get(event.pointerId);
       if(!prior)return;
+      if(gestureUntilClear)flushPinchFrame();
       pointerState.delete(event.pointerId);
       if(!gestureUntilClear && pointerState.size===0){
-        if(drawTool==='ERASE' && event.type==='pointerup'){
-          // Prefer deleting selected vertices; do not erase a freehand line
-          // in the same gesture that edits a connected-line node.
-          const trail=eraserTrail.length?eraserTrail:[drawPixel(event)];
-          if(!erasePointVertices(trail))eraseByTrail(trail);
+        if(drawTool==='ERASE'){
+          if(event.type==='pointerup'){
+            const next=drawPixel(event);
+            const last=eraserTrail[eraserTrail.length-1];
+            eraseEagerly(last?[last,next]:[next]);
+          }
+          finishEraserGesture();
         }
         else if(drawTool==='POINT' && event.type==='pointerup' && !prior.moved)
           addPointToChain(event);
@@ -1399,6 +1435,7 @@
       if(gestureUntilClear && pointerState.size===0){
         gestureUntilClear=false;
         gesture=null;
+        gestureNext=null;
         currentStroke=null;
       }
       event.preventDefault();
@@ -1412,7 +1449,8 @@
     if(!draft)return;
     drawingMode=true;
     originalZoomSnap=map.options.zoomSnap;
-    map.options.zoomSnap=.25;
+    // Fractional zoom is continuous for the entire two-finger drawing gesture.
+    map.options.zoomSnap=0;
     $('drawingCapture').hidden=false;
     $('drawingControls').hidden=false;
     $('navSessionControls').hidden=true;
@@ -1426,6 +1464,7 @@
   function exitDrawing() {
     if(!drawingMode)return;
     if(currentStroke?.length>=2)commitStroke();
+    if(eraserStrokeChanged)finishEraserGesture();
     if(pointChain.length>=2)commitPointChain();
     else if(pointChain.length){
       toast('지점 하나만 찍힌 선은 저장하지 않음');
@@ -1433,6 +1472,8 @@
       renderPointPreview();
     }
     drawingMode=false;
+    flushPinchFrame();
+    gestureNext=null;
     pointerState.clear();
     currentStroke=null;
     eraserTrail=[];
