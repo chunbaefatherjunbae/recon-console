@@ -18,6 +18,8 @@
   const $ = id => document.getElementById(id);
   const routeLayer = L.layerGroup().addTo(map);
   const drawingLayer = L.layerGroup().addTo(map);
+  // Saved line geometry and live previews update independently during erasure.
+  const savedDrawingLayer = L.layerGroup().addTo(map);
   // Uncommitted tap-to-connect vertices must stay on the map in WGS84.
   const drawingPointLayer = L.layerGroup().addTo(map);
   // Leaflet defaults to Canvas on RECON. Active editable geometry needs a
@@ -39,8 +41,12 @@
   let pointChain = [];
   let pointerState = new Map();
   let gesture = null;
+  let gestureFrame = 0;
+  let gestureNext = null;
   let gestureUntilClear = false;
   let eraserTrail = [];
+  let eraserSnapshotTaken = false;
+  let eraserStrokeChanged = false;
   let drawUndoHistory = [];
   let originalZoomSnap = null;
   let timerHandle = null;
@@ -188,11 +194,30 @@
     });
   }
 
+  function renderSavedDrawings() {
+    savedDrawingLayer.clearLayers();
+    if(!draft || !planViewActive)return;
+    draft.drawings.forEach(seg=>{
+      if(!Array.isArray(seg.points)||seg.points.length<2)return;
+      L.polyline(seg.points,{
+        interactive:false,
+        className:'baseline-plan-drawing',
+        color:'#9de3a4',
+        renderer:drawingEditRenderer,
+        weight:2,
+        opacity:seg.kind==='MARK'?.9:.78,
+        dashArray:seg.kind==='MARK'?null:'8 6'
+      }).addTo(savedDrawingLayer);
+    });
+  }
+
   function renderPlanMap() {
     routeLayer.clearLayers();
-    drawingLayer.clearLayers();
     pointLayer.clearLayers();
-    if (!draft || !planViewActive) return;
+    if (!draft || !planViewActive) {
+      renderSavedDrawings();
+      return;
+    }
 
     const nodes = [];
     if (draft.start) nodes.push(draft.start.coords);
@@ -219,18 +244,7 @@
     if (draft.destination) {
       L.marker(draft.destination.coords,{icon:mapPointIcon('DEST',0),interactive:false,zIndexOffset:440}).addTo(pointLayer);
     }
-
-    draft.drawings.forEach(seg => {
-      if (!Array.isArray(seg.points) || seg.points.length < 2) return;
-      L.polyline(seg.points,{
-        interactive:false,
-        className:'baseline-plan-drawing',
-        color:'#9de3a4',
-        weight:2,
-        opacity:seg.kind === 'MARK' ? .9 : .78,
-        dashArray:seg.kind === 'MARK' ? null : '8 6'
-      }).addTo(drawingLayer);
-    });
+    renderSavedDrawings();
   }
 
   function metricText(bundle) {
@@ -1126,6 +1140,30 @@
     syncDrawButtons();
   }
 
+  // One eraser drag is one undo action. Only the first modification captures
+  // the prior plan, avoiding a huge JSON clone on every pointermove.
+  function markEraserChange() {
+    if(!eraserSnapshotTaken){
+      drawSnapshot();
+      eraserSnapshotTaken=true;
+    }
+    eraserStrokeChanged=true;
+  }
+
+  function finishEraserGesture() {
+    if(eraserStrokeChanged)routeChanged('DRAW_ERASE_LIVE');
+    eraserSnapshotTaken=false;
+    eraserStrokeChanged=false;
+    eraserTrail=[];
+  }
+
+  function eraseEagerly(step){
+    if(!step.length)return;
+    // Touching a connected-line vertex only changes vertices. Never
+    // accidentally gouge an underlying freehand stroke in the same step.
+    if(!erasePointVertices(step))eraseByTrail(step);
+  }
+
   // An eraser stroke can hit one or several vertices, but never erases
   // intermediate segments of a connected-line drawing. Neighbors reconnect.
   function erasePointVertices(trail) {
@@ -1156,10 +1194,12 @@
       }
     });
     if(!changed)return false;
-    drawSnapshot();
+    markEraserChange();
     pointChain=remain;
     draft.drawings=segments;
-    routeChanged('DRAW_POINT_ERASE');
+    renderSavedDrawings();
+    renderLiveStroke();
+    renderPointPreview();
     syncDrawButtons();
     return true;
   }
@@ -1192,6 +1232,17 @@
     draft.drawings.forEach(seg=>{
       if(seg.mode==='POINT'){kept.push(seg);return;}
       const pix=seg.points.map(p=>map.latLngToContainerPoint(p));
+      // Quick reject remote strokes. The old eraser sampled every polyline
+      // on every move, including those nowhere near the finger.
+      const trailXs=trail.map(p=>p.x),trailYs=trail.map(p=>p.y);
+      const minX=Math.min(...trailXs)-brush,maxX=Math.max(...trailXs)+brush;
+      const minY=Math.min(...trailYs)-brush,maxY=Math.max(...trailYs)+brush;
+      if(!pix.some(p=>p.x>=minX&&p.x<=maxX&&p.y>=minY&&p.y<=maxY) &&
+        !pix.slice(1).some((p,i)=>{
+          const a=pix[i];
+          return Math.max(p.x,a.x)>=minX&&Math.min(p.x,a.x)<=maxX&&
+            Math.max(p.y,a.y)>=minY&&Math.min(p.y,a.y)<=maxY;
+        })) {kept.push(seg);return;}
       const sampled=[];
       for(let i=1;i<pix.length;i++){
         const a=pix[i-1],b=pix[i];
@@ -1222,9 +1273,9 @@
       flush();
     });
     if(!modified)return;
-    drawSnapshot();
+    markEraserChange();
     draft.drawings=kept;
-    routeChanged('DRAW_ERASE');
+    renderSavedDrawings();
   }
 
   function drawPixel(event) {
@@ -1239,6 +1290,39 @@
     node.hidden=false;
     node.style.left=p.x+'px';
     node.style.top=p.y+'px';
+  }
+
+  // Apply one combined center/zoom update per animation frame. The old
+  // panBy + setZoomAround combination invalidated the map twice and snapped
+  // every .12 zoom step, which visibly jerked on iPad pinch gestures.
+  function applyPinchFrame(){
+    const next=gestureNext;
+    gestureNext=null;
+    if(!drawingMode || !gesture || !next)return;
+    const rect=$('drawingCapture').getBoundingClientRect();
+    const oldAnchor=L.point(gesture.mid.x-rect.left,gesture.mid.y-rect.top);
+    const nextAnchor=L.point(next.mid.x-rect.left,next.mid.y-rect.top);
+    const anchoredLocation=map.containerPointToLatLng(oldAnchor);
+    const nextZoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
+      gesture.zoom+Math.log2(next.dist/gesture.startDist)));
+    // Keep the same geographic point beneath the moving fingers while both
+    // the midpoint and pinch scale change. This is a single Leaflet update.
+    const world=map.project(anchoredLocation,nextZoom);
+    const targetCenter=map.unproject(world.add(map.getSize().divideBy(2)).subtract(nextAnchor),nextZoom);
+    if(Number.isFinite(targetCenter.lat)&&Number.isFinite(targetCenter.lng))
+      map.setView(targetCenter,nextZoom,{animate:false});
+    gesture.mid=next.mid;
+  }
+  function flushPinchFrame(){
+    if(gestureFrame){cancelAnimationFrame(gestureFrame);gestureFrame=0;}
+    applyPinchFrame();
+  }
+  function schedulePinchFrame(){
+    if(gestureFrame)return;
+    gestureFrame=requestAnimationFrame(()=>{
+      gestureFrame=0;
+      applyPinchFrame();
+    });
   }
 
   function bindDrawingCapture() {
@@ -1257,7 +1341,10 @@
 
       if (pointerState.size===1 && !gestureUntilClear) {
         if(drawTool==='ERASE'){
+          eraserSnapshotTaken=false;
+          eraserStrokeChanged=false;
           eraserTrail=[drawPixel(event)];
+          eraseEagerly(eraserTrail);
           updateEraserCursor(event);
           currentStroke=null;
         }else if(drawTool==='FREE'){
@@ -1267,7 +1354,7 @@
         }
         // POINT waits until pointerup. No vertex is added by a swipe.
       }else if(pointerState.size>=2){
-        eraserTrail=[];
+        if(drawTool==='ERASE')finishEraserGesture();
         updateEraserCursor(null);
         currentStroke=null;
         gestureUntilClear=true;
@@ -1296,19 +1383,16 @@
         const nextMid=midpoint(pts[0],pts[1]);
         const nextDist=Math.max(1,distance(pts[0],pts[1]));
         if(gesture){
-          map.panBy([gesture.mid.x-nextMid.x,gesture.mid.y-nextMid.y],{animate:false});
-          const rect=capture.getBoundingClientRect();
-          const anchor=L.point(nextMid.x-rect.left,nextMid.y-rect.top);
-          const zoom=Math.max(map.getMinZoom(),Math.min(map.getMaxZoom(),
-            gesture.zoom+Math.log2(nextDist/gesture.startDist)));
-          if(Math.abs(zoom-map.getZoom())>=.12)
-            map.setZoomAround(anchor,zoom,{animate:false});
-          gesture.mid=nextMid;
+          gestureNext={mid:nextMid,dist:nextDist};
+          schedulePinchFrame();
         }
       }else if(!gestureUntilClear && drawTool==='ERASE'){
         const next=drawPixel(event);
-        if(!eraserTrail.length || distance(next,eraserTrail[eraserTrail.length-1])>3)
-          eraserTrail.push(next);
+        const last=eraserTrail[eraserTrail.length-1];
+        if(!last || distance(last,next)>1){
+          eraseEagerly(last?[last,next]:[next]);
+          eraserTrail=[next];
+        }
         updateEraserCursor(event);
       }else if(!gestureUntilClear && drawTool==='FREE' && currentStroke){
         const ll=drawLatLng(event);
@@ -1325,13 +1409,16 @@
     const end=event=>{
       const prior=pointerState.get(event.pointerId);
       if(!prior)return;
+      if(gestureUntilClear)flushPinchFrame();
       pointerState.delete(event.pointerId);
       if(!gestureUntilClear && pointerState.size===0){
-        if(drawTool==='ERASE' && event.type==='pointerup'){
-          // Prefer deleting selected vertices; do not erase a freehand line
-          // in the same gesture that edits a connected-line node.
-          const trail=eraserTrail.length?eraserTrail:[drawPixel(event)];
-          if(!erasePointVertices(trail))eraseByTrail(trail);
+        if(drawTool==='ERASE'){
+          if(event.type==='pointerup'){
+            const next=drawPixel(event);
+            const last=eraserTrail[eraserTrail.length-1];
+            eraseEagerly(last?[last,next]:[next]);
+          }
+          finishEraserGesture();
         }
         else if(drawTool==='POINT' && event.type==='pointerup' && !prior.moved)
           addPointToChain(event);
@@ -1348,6 +1435,7 @@
       if(gestureUntilClear && pointerState.size===0){
         gestureUntilClear=false;
         gesture=null;
+        gestureNext=null;
         currentStroke=null;
       }
       event.preventDefault();
@@ -1361,7 +1449,8 @@
     if(!draft)return;
     drawingMode=true;
     originalZoomSnap=map.options.zoomSnap;
-    map.options.zoomSnap=.25;
+    // Fractional zoom is continuous for the entire two-finger drawing gesture.
+    map.options.zoomSnap=0;
     $('drawingCapture').hidden=false;
     $('drawingControls').hidden=false;
     $('navSessionControls').hidden=true;
@@ -1375,6 +1464,7 @@
   function exitDrawing() {
     if(!drawingMode)return;
     if(currentStroke?.length>=2)commitStroke();
+    if(eraserStrokeChanged)finishEraserGesture();
     if(pointChain.length>=2)commitPointChain();
     else if(pointChain.length){
       toast('지점 하나만 찍힌 선은 저장하지 않음');
@@ -1382,6 +1472,8 @@
       renderPointPreview();
     }
     drawingMode=false;
+    flushPinchFrame();
+    gestureNext=null;
     pointerState.clear();
     currentStroke=null;
     eraserTrail=[];

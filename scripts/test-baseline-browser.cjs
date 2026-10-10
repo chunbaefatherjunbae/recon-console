@@ -770,6 +770,18 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#planNewBtn').count(), 1);
       await page.locator('#planNewBtn').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '계획 편집');
+      const planColors=await page.evaluate(()=>{
+        const color=selector=>getComputedStyle(document.querySelector(selector)).color;
+        return {
+          nameLabel:color('.plan-name span'),
+          pointLabel:color('.plan-route-row > span'),
+          addVia:color('.plan-add-via')
+        };
+      });
+      for(const [part,color] of Object.entries(planColors)){
+        assert.equal(color,'rgb(185, 231, 194)',
+          'PLAN '+part+' text must have clearly readable contrast');
+      }
       assert.equal(await page.locator('[data-edit-point="START"]').count(), 1);
       assert.equal(await page.locator('[data-edit-point="DEST"]').count(), 1);
 
@@ -777,6 +789,8 @@ const server = http.createServer((req, res) => {
       await page.locator('#planNameInput').fill('BASELINE TEST PLAN');
       await page.locator('[data-edit-point="DEST"]').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '목적지 선택');
+      assert.equal(await page.locator('.point-picker-grid span').first().evaluate(el=>getComputedStyle(el).color),
+        'rgb(185, 231, 194)','destination picker secondary labels must remain legible');
       assert.equal(await page.locator('#pointAddressInput').count(), 1);
       await page.locator('#pointRandomRegistered').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '계획 편집');
@@ -954,6 +968,8 @@ const server = http.createServer((req, res) => {
       await page.locator('[data-nav-action="DRAW"]').click();
       assert.equal(await page.locator('#drawingCapture').isVisible(), true);
       const drawBox = await page.locator('#drawingCapture').boundingBox();
+      assert.equal(await page.evaluate(()=>BaselineApp.map.options.zoomSnap),0,
+        'drawing gestures must support continuous fractional zoom');
       await page.locator('#drawingCapture').dispatchEvent('pointerdown', { pointerId:11, pointerType:'touch', isPrimary:true, clientX:drawBox.x+120, clientY:drawBox.y+350 });
       await page.locator('#drawingCapture').dispatchEvent('pointermove', { pointerId:11, pointerType:'touch', isPrimary:true, clientX:drawBox.x+150, clientY:drawBox.y+370 });
       await page.locator('#drawingCapture').dispatchEvent('pointermove', { pointerId:11, pointerType:'touch', isPrimary:true, clientX:drawBox.x+180, clientY:drawBox.y+390 });
@@ -978,6 +994,34 @@ const server = http.createServer((req, res) => {
       });
       assert(Math.abs(centerAfterGesture[0]-centerBeforeGesture[0]) > 0.00001 || Math.abs(centerAfterGesture[1]-centerBeforeGesture[1]) > 0.00001);
 
+      // A small pinch must change zoom gradually instead of freezing until
+      // a 0.12 threshold or snapping directly to a .25 increment.
+      const zoomSmoothStart=await page.evaluate(()=>BaselineApp.map.getZoom());
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',
+        {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+130,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',
+        {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+250,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',
+        {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+124,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',
+        {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+256,clientY:drawBox.y+310});
+      await page.waitForTimeout(50);
+      const zoomMid=await page.evaluate(()=>BaselineApp.map.getZoom());
+      assert(zoomMid>zoomSmoothStart+.05 && zoomMid<zoomSmoothStart+.25,
+        'small pinch must produce a non-snapped incremental change');
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',
+        {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+115,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',
+        {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+265,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',
+        {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+115,clientY:drawBox.y+310});
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',
+        {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+265,clientY:drawBox.y+310});
+      const zoomSmoothEnd=await page.evaluate(()=>BaselineApp.map.getZoom());
+      assert(zoomSmoothEnd>zoomMid+.10,'continuous pinch should progress smoothly with finger movement');
+      assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.length),1,
+        'pinch must not create freehand or connected-line paths');
+
       const zoomBeforePinch=await page.evaluate(() => BaselineApp.map.getZoom());
       await page.locator('#drawingCapture').dispatchEvent('pointerdown', {pointerId:31,pointerType:'touch',isPrimary:true,clientX:drawBox.x+125,clientY:drawBox.y+310});
       await page.locator('#drawingCapture').dispatchEvent('pointerdown', {pointerId:32,pointerType:'touch',isPrimary:false,clientX:drawBox.x+245,clientY:drawBox.y+310});
@@ -999,9 +1043,15 @@ const server = http.createServer((req, res) => {
         const length=points.slice(1).reduce((sum,p,i)=>sum+map.latLngToContainerPoint(p).distanceTo(map.latLngToContainerPoint(points[i])),0);
         return {x:center.x+rect.left,y:center.y+rect.top,length};
       });
+      const freeBeforeEraser=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings);
       await page.locator('#drawingCapture').dispatchEvent('pointerdown',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x,clientY:eraseLocation.y});
       assert.equal(await page.locator('#drawingEraserCursor').isVisible(),true);
-      await page.locator('#drawingCapture').dispatchEvent('pointerup',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x,clientY:eraseLocation.y});
+      await page.locator('#drawingCapture').dispatchEvent('pointermove',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x+13,clientY:eraseLocation.y+9});
+      assert.notDeepEqual(await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings),freeBeforeEraser,
+        'freehand stroke must visibly change BEFORE pointerup, not on release');
+      assert(await page.locator('path.baseline-plan-drawing').count()>=1,
+        'persisted drawing must be painted in an editable SVG during live erasure');
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',{pointerId:41,pointerType:'touch',isPrimary:true,clientX:eraseLocation.x+13,clientY:eraseLocation.y+9});
       const erased=await page.evaluate(() => {
         const plan=BaselineNavigationUI.getDraft(),map=BaselineApp.map;
         return {count:plan.drawings.length,
@@ -1103,7 +1153,13 @@ const server = http.createServer((req, res) => {
         const box=BaselineApp.map.getContainer().getBoundingClientRect();
         return {x:box.left+pt.x,y:box.top+pt.y};
       });
-      await drawTap(164,savedMiddle.x,savedMiddle.y);
+      await page.locator('#drawingCapture').dispatchEvent('pointerdown',
+        {pointerId:164,pointerType:'touch',isPrimary:true,clientX:savedMiddle.x,clientY:savedMiddle.y});
+      assert.equal(await page.evaluate(()=>
+        BaselineNavigationUI.getDraft().drawings.find(x=>x.mode==='POINT').points.length),2,
+        'saved POINT vertex must disappear on touch, before lifting the finger');
+      await page.locator('#drawingCapture').dispatchEvent('pointerup',
+        {pointerId:164,pointerType:'touch',isPrimary:true,clientX:savedMiddle.x,clientY:savedMiddle.y});
       connected=await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.filter(x=>x.mode==='POINT'));
       assert.equal(connected[0].points.length,2,'deleting a saved middle vertex must join neighboring endpoints');
       assert.deepEqual(connected[0].points,[originalPointChain[0],originalPointChain[2]]);
