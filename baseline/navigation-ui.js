@@ -18,6 +18,8 @@
   const $ = id => document.getElementById(id);
   const routeLayer = L.layerGroup().addTo(map);
   const drawingLayer = L.layerGroup().addTo(map);
+  // Saved line geometry and live previews update independently during erasure.
+  const savedDrawingLayer = L.layerGroup().addTo(map);
   // Uncommitted tap-to-connect vertices must stay on the map in WGS84.
   const drawingPointLayer = L.layerGroup().addTo(map);
   // Leaflet defaults to Canvas on RECON. Active editable geometry needs a
@@ -39,8 +41,12 @@
   let pointChain = [];
   let pointerState = new Map();
   let gesture = null;
+  let gestureFrame = 0;
+  let gestureNext = null;
   let gestureUntilClear = false;
   let eraserTrail = [];
+  let eraserSnapshotTaken = false;
+  let eraserStrokeChanged = false;
   let drawUndoHistory = [];
   let originalZoomSnap = null;
   let timerHandle = null;
@@ -188,11 +194,30 @@
     });
   }
 
+  function renderSavedDrawings() {
+    savedDrawingLayer.clearLayers();
+    if(!draft || !planViewActive)return;
+    draft.drawings.forEach(seg=>{
+      if(!Array.isArray(seg.points)||seg.points.length<2)return;
+      L.polyline(seg.points,{
+        interactive:false,
+        className:'baseline-plan-drawing',
+        color:'#9de3a4',
+        renderer:drawingEditRenderer,
+        weight:2,
+        opacity:seg.kind==='MARK'?.9:.78,
+        dashArray:seg.kind==='MARK'?null:'8 6'
+      }).addTo(savedDrawingLayer);
+    });
+  }
+
   function renderPlanMap() {
     routeLayer.clearLayers();
-    drawingLayer.clearLayers();
     pointLayer.clearLayers();
-    if (!draft || !planViewActive) return;
+    if (!draft || !planViewActive) {
+      renderSavedDrawings();
+      return;
+    }
 
     const nodes = [];
     if (draft.start) nodes.push(draft.start.coords);
@@ -219,18 +244,7 @@
     if (draft.destination) {
       L.marker(draft.destination.coords,{icon:mapPointIcon('DEST',0),interactive:false,zIndexOffset:440}).addTo(pointLayer);
     }
-
-    draft.drawings.forEach(seg => {
-      if (!Array.isArray(seg.points) || seg.points.length < 2) return;
-      L.polyline(seg.points,{
-        interactive:false,
-        className:'baseline-plan-drawing',
-        color:'#9de3a4',
-        weight:2,
-        opacity:seg.kind === 'MARK' ? .9 : .78,
-        dashArray:seg.kind === 'MARK' ? null : '8 6'
-      }).addTo(drawingLayer);
-    });
+    renderSavedDrawings();
   }
 
   function metricText(bundle) {
