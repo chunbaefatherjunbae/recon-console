@@ -2773,3 +2773,41 @@ body.layer-hide-track .baseline-track-path {
   .drawing-controls .drawing-tool-row button,
   .drawing-controls .drawing-action-row button {min-height:32px;}
 }
+
+/* PLAN readability: raise secondary text contrast without changing the NVG
+   hardware palette or globally brightening subdued map overlays. */
+:root { --plan-text-secondary:#b9e7c2; }
+.sheet .plan-name span,
+.sheet .plan-route-row > span,
+.sheet .plan-library-row .plan-open span,
+.sheet .plan-current span,
+.sheet .point-picker-grid span,
+.sheet .point-address-empty,
+.sheet .point-address-results button span,
+.sheet .plan-add-via,
+.sheet .plan-row-tools button:not(:disabled),
+.sheet .point-picker-back,
+.sheet .point-picker-address button:not(:disabled),
+.sheet .point-picker-coord button:not(:disabled),
+.sheet .point-picker-site button:not(:disabled),
+.nav-session-controls button:not(.primary),
+.navigation-hud .nav-instrument-footer,
+.navigation-hud .nav-instrument-footer small,
+.navigation-hud .nav-instrument-header small,
+.navigation-hud .navigation-hud-sub {
+  color:var(--plan-text-secondary);
+}
+.sheet .plan-route-row > button,
+.sheet .plan-editor-actions button,
+.sheet .plan-library-row > button {
+  border-color:rgba(121,202,145,.42);
+}
+.sheet .plan-row-tools button:disabled {
+  opacity:.42;
+}
+.sheet .plan-add-via {
+  border-color:rgba(121,202,145,.58);
+}
+.drawing-controls .drawing-mode-note {
+  color:var(--plan-text-secondary);
+}
