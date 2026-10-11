@@ -80,6 +80,12 @@
   });
 
   roadBoostLayer.addTo(map);
+  // Keep GPS/LAST icons above START/VIA/DEST markers even when their
+  // geographic coordinates overlap. Separate from the regular marker pane.
+  map.createPane('reconLocationPane');
+  const locationPane=map.getPane('reconLocationPane');
+  locationPane.style.zIndex='645';
+  locationPane.style.pointerEvents='none';
   map.attributionControl?.setPrefix(false);
   siteLayer.addTo(map);
 
@@ -306,6 +312,7 @@
       if (!gpsMarker) {
         gpsMarker = L.marker([fix.lat, fix.lon], {
           icon: makeDot('gps'),
+          pane:'reconLocationPane',
           interactive: false,
           zIndexOffset: 400
         }).addTo(map);
@@ -321,6 +328,7 @@
         if (!lastMarker) {
           lastMarker = L.marker([last.lat, last.lon], {
             icon: makeDot('last'),
+            pane:'reconLocationPane',
             interactive:false,
             zIndexOffset:350
           }).addTo(map);
@@ -1670,6 +1678,7 @@
     topoLayer,
     roadBoostLayer,
     siteLayer,
+    getLocationMarkers:()=>({gps:gpsMarker,last:lastMarker}),
     refresh,
     setTempAtReticle,
     moveToTemp,

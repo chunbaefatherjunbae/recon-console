@@ -518,6 +518,7 @@
       if (!draft.start) draft.start=referencePoint('START');
       if (!draft.start) return toast('출발지 기준 위치 필요');
       if (!draft.destination) return toast('목적지 선택 필요');
+      dismissTextEditing();
       routeChanged('PLAN_CONFIRM');
       App.closeSheet();
     });
@@ -823,14 +824,27 @@
     };
   }
 
+  // Leaving native text fields focused keeps an iOS text-undo session live
+  // during navigation. The OS Shake to Undo popup itself is a system setting.
+  function dismissTextEditing() {
+    const active=document.activeElement;
+    if(active?.matches?.('input,textarea,select,[contenteditable="true"]'))active.blur();
+  }
+
   function startSession() {
     if (!draft?.destination) return toast('목적지 필요');
     if (!draft.start) {
       draft.start=referencePoint('START');
       if (!draft.start) return toast('출발지 필요');
     }
+    dismissTextEditing();
     const session=Records.start(draft);
     if (!session) return toast('항법 시작 실패');
+    // Starting NAV should show the actual location instead of leaving the
+    // map at a potentially distant destination. FOLLOW stays opt-in.
+    if(S.state.gps.enabled && S.state.gps.fix) {
+      App.centerOnReference({engageFollow:false});
+    }
     const gpsPoint=currentGpsTrackPoint();
     if (gpsPoint) Records.addTrackPoint(gpsPoint);
     renderActiveTrack();
