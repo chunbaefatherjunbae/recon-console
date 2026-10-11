@@ -202,6 +202,18 @@ const server = http.createServer((req, res) => {
       });
       assert(firstFix.distance<4 && firstFix.zoom>=15 && !firstFix.follow,
         'first valid fix should move and zoom to live GPS, without enabling tracking');
+      const markerPane=await page.evaluate(()=>{
+        const gps=BaselineApp.getLocationMarkers().gps;
+        return {
+          pane:gps?.options.pane,
+          visible:!!gps?.getElement(),
+          paneZ:getComputedStyle(document.querySelector('.leaflet-recon-location-pane')).zIndex,
+          routePaneZ:getComputedStyle(document.querySelector('.leaflet-marker-pane')).zIndex
+        };
+      });
+      assert.equal(markerPane.pane,'reconLocationPane');
+      assert(markerPane.visible && Number(markerPane.paneZ)>Number(markerPane.routePaneZ),
+        'GPS marker must render over PLAN route markers when coordinates overlap');
       await page.evaluate(()=>window.__gpsMock.success(37.61,127.05));
       const secondFix=await page.evaluate(()=>BaselineApp.map.getCenter());
       assert(Number.isFinite(secondFix.lat) && Number.isFinite(secondFix.lng));
@@ -850,6 +862,30 @@ const server = http.createServer((req, res) => {
       assert.notEqual(navLegibility.mainBackdrop,'rgba(0, 0, 0, 0)',
         'POS/RET backdrop must remain visible');
       assert(navLegibility.noOverlap,'navigation route HUD must not obscure POS telemetry');
+      const planActualContrast=await page.evaluate(()=>{
+        const probe=selector=>{
+          const el=document.querySelector(selector);
+          const s=getComputedStyle(el);
+          return {color:s.color,size:parseFloat(s.fontSize),weight:parseFloat(s.fontWeight)};
+        };
+        return {
+          navMode:probe('#navModeLabel'),
+          navDistanceLabel:probe('#navDistanceLabel'),
+          navDistanceUnit:probe('#navDistanceUnit'),
+          navGridLabel:probe('.nav-angle-readout small'),
+          navNowMetric:probe('#navNowMetric'),
+          navDeclination:probe('#navDeclination'),
+          gaugeStroke:getComputedStyle(document.querySelector('.nav-gauge-ring')).stroke
+        };
+      });
+      for(const [k,v] of Object.entries(planActualContrast)){
+        if(k==='gaugeStroke')assert.equal(v,'rgb(185, 231, 194)','PLAN gauge needs readable ticks');
+        else {
+          assert.equal(v.color,'rgb(218, 251, 225)',
+            'PLAN '+k+' actual computed style still inherits dark CSS');
+          assert(v.size>=11,'PLAN '+k+' needs readable type size');
+        }
+      }
       const gaugeReadouts=await page.evaluate(() => {
         const plan=BaselineNavigationUI.getDraft();
         const ref=BaselineState.reference();
@@ -1193,6 +1229,9 @@ const server = http.createServer((req, res) => {
         BaselineState.setGpsEnabled(true);
         BaselineState.setGpsFix({ lat:37.50000, lon:127.00000, accuracy:5, altitude:100 });
       });
+      assert.equal(await page.locator('.leaflet-recon-location-pane .marker-gps:not(.marker-last)').count(),1,
+        'LIVE GPS symbol must remain mounted in PLAN/NAV mode');
+      assert.equal(await page.locator('#gpsBtn').isVisible(),true,'GPS control must remain visible in PLAN/NAV');
       await page.waitForTimeout(25);
       await page.evaluate(() => BaselineState.setGpsFix({ lat:37.50010, lon:127.00000, accuracy:5, altitude:101 }));
       await page.waitForTimeout(30);
