@@ -207,8 +207,8 @@ const server = http.createServer((req, res) => {
         return {
           pane:gps?.options.pane,
           visible:!!gps?.getElement(),
-          paneZ:getComputedStyle(document.querySelector('.leaflet-recon-location-pane')).zIndex,
-          routePaneZ:getComputedStyle(document.querySelector('.leaflet-marker-pane')).zIndex
+          paneZ:getComputedStyle(BaselineApp.map.getPane('reconLocationPane')).zIndex,
+          routePaneZ:getComputedStyle(BaselineApp.map.getPane('markerPane')).zIndex
         };
       });
       assert.equal(markerPane.pane,'reconLocationPane');
@@ -1229,8 +1229,12 @@ const server = http.createServer((req, res) => {
         BaselineState.setGpsEnabled(true);
         BaselineState.setGpsFix({ lat:37.50000, lon:127.00000, accuracy:5, altitude:100 });
       });
-      assert.equal(await page.locator('.leaflet-recon-location-pane .marker-gps:not(.marker-last)').count(),1,
-        'LIVE GPS symbol must remain mounted in PLAN/NAV mode');
+      assert.equal(await page.evaluate(()=>{
+        const gps=BaselineApp.getLocationMarkers().gps;
+        const pane=BaselineApp.map.getPane('reconLocationPane');
+        const symbol=gps?.getElement()?.querySelector('.marker-gps:not(.marker-last)');
+        return Boolean(symbol && pane.contains(symbol) && getComputedStyle(symbol).display!=='none');
+      }),true,'LIVE GPS symbol must remain mounted in PLAN/NAV mode');
       assert.equal(await page.locator('#gpsBtn').isVisible(),true,'GPS control must remain visible in PLAN/NAV');
       await page.waitForTimeout(25);
       await page.evaluate(() => BaselineState.setGpsFix({ lat:37.50010, lon:127.00000, accuracy:5, altitude:101 }));
