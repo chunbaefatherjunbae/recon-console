@@ -2811,3 +2811,48 @@ body.layer-hide-track .baseline-track-path {
 .drawing-controls .drawing-mode-note {
   color:var(--plan-text-secondary);
 }
+
+/* PLAN/NAV legibility correction, audited against final computed selectors.
+   The previous .nav-instrument-footer rule did not override child spans:
+   .nav-instrument-secondary span and .nav-distance-line span retained dim
+   green due to greater selector specificity. Set the exact final selectors. */
+body.baseline-navigation-active .navigation-hud .nav-instrument-header small,
+body.baseline-navigation-active .navigation-hud .nav-distance-readout small,
+body.baseline-navigation-active .navigation-hud .nav-angle-readout small,
+body.baseline-navigation-active .navigation-hud .nav-distance-line span,
+body.baseline-navigation-active .navigation-hud .nav-instrument-secondary span,
+body.baseline-navigation-active .navigation-hud .navigation-hud-sub {
+  color:#dafbe1;
+  text-shadow:0 1px 2px #000,0 0 3px rgba(0,0,0,.7);
+  font-weight:600;
+}
+body.baseline-navigation-active .navigation-hud .nav-instrument-secondary span {
+  font-size:12px;
+  line-height:1.5;
+}
+body.baseline-navigation-active .navigation-hud .nav-distance-readout small,
+body.baseline-navigation-active .navigation-hud .nav-angle-readout small {
+  font-size:12px;
+}
+body.baseline-navigation-active .navigation-hud .nav-distance-line span {
+  font-size:13px;
+}
+body.baseline-navigation-active .navigation-hud .nav-gauge-ring,
+body.baseline-navigation-active .navigation-hud .nav-gauge-ticks {
+  stroke:#b9e7c2;
+}
+body.baseline-navigation-active .nav-route-summary b {
+  color:#dafbe1;
+}
+body.baseline-navigation-active .nav-session-controls button:not(:disabled) {
+  color:#c5f3cf;
+  border-color:rgba(121,202,145,.52);
+}
+body.baseline-navigation-active .nav-session-controls button.primary {
+  color:#e4ffe9;
+  border-color:var(--border-accent);
+}
+body.baseline-navigation-active .marker-gps:not(.marker-last) {
+  color:#e0ffc5;
+  filter:drop-shadow(0 0 3px #061008) drop-shadow(0 0 4px rgba(130,255,160,.8));
+}
