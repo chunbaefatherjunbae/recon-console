@@ -38,3 +38,14 @@ The compact OSM vector bundle is generated from the Geofabrik South Korea extrac
 Low-resolution nationwide terrain (z5-z7, 21 tiles for the Korea field envelope) is warmed automatically after an online BASELINE boot. Higher-detail nationwide terrain (z8-z9, 218 additional tiles) is opt-in from Settings before field use. LITE rendering falls back through lower cached DEM zooms instead of turning into a blank map when detailed terrain is unavailable.
 
 Later feature work must be added to BASELINE as new modules instead of wrapping legacy globals.
+
+## Optical equipment UI (v17)
+- `equipment-ui.css` is the scoped source of truth for the compact PLAN/NAV
+  instrument layout, consistent NVG-G control tokens and responsive sizing.
+- One editable objective heading and an explicit fit-route map action replace
+  duplicated destination headings. Detailed current/start measurements expand
+  only on request; bearing calculations remain unchanged.
+- App navigation stays reachable while contextual PLAN actions receive priority.
+  Registered-site visibility, map/reticle center, GPS, drawing, storage and
+  session lifecycle retain their previous rules.
+- Do not append further competing PLAN style rules to `styles.css`.
