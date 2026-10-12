@@ -49,3 +49,17 @@ Later feature work must be added to BASELINE as new modules instead of wrapping 
   Registered-site visibility, map/reticle center, GPS, drawing, storage and
   session lifecycle retain their previous rules.
 - Do not append further competing PLAN style rules to `styles.css`.
+
+## Field-optic HUD and input lifecycle (v18)
+- Remove the map-floating route-fit and opaque detailed-telemetry buttons:
+  route-fit is in the PLAN editor and the 44px details disclosure is a naked
+  chevron inside the measured HUD footer.
+- Default numeric DIST / GRID / MAG use three equal-width columns.
+  GPS track visuals are less aggressive; route mathematics and saved data stay
+  unchanged. The existing global navigation remains reachable.
+- Centralize input focus release before every common sheet replacement/close,
+  and before entering drawing or confirming a plan. This borrows the older
+  TACTICAL RECON search close lifecycle. It reduces the chance of a lingering
+  iOS edit session, but cannot claim to disable OS Shake to Undo from JavaScript.
+- Verify real-device iOS shake behavior after typing a plan name, closing search,
+  starting and stopping NAV, and using the map for a sustained period.
