@@ -131,7 +131,10 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--text-main').trim()), '#22ff66');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--accent').trim()), '#9de3a4');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--text-dim').trim()), '#4f9a63');
-      assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--map-filter').includes('hue-rotate(76deg)')), true);
+      assert.equal(await page.evaluate(() => {
+        const filter=getComputedStyle(document.body).getPropertyValue('--map-filter');
+        return filter.includes('hue-rotate(72deg)') && filter.includes('brightness(56%)');
+      }),true,'NVG-G map treatment must match the optical-equipment theme');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body, '::after').opacity), '0.18');
       await page.waitForTimeout(120);
       const topoTileFilter = await page.locator('.leaflet-tile:not(.road-boost-tiles)').first().evaluate(el => getComputedStyle(el).filter).catch(() => '');
