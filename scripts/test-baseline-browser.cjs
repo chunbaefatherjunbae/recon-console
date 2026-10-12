@@ -1095,7 +1095,13 @@ const server = http.createServer((req, res) => {
         {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+124,clientY:drawBox.y+310});
       await page.locator('#drawingCapture').dispatchEvent('pointermove',
         {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+256,clientY:drawBox.y+310});
-      await page.waitForTimeout(50);
+      // RAFs can be delayed in WebKit while low-zoom route tiles settle.
+      // Wait for an actual intermediate fractional frame, rather than
+      // assuming the browser renders it within exactly 50 milliseconds.
+      await page.waitForFunction(base=>{
+        const delta=BaselineApp.map.getZoom()-base;
+        return delta>.05 && delta<.25;
+      },zoomSmoothStart,{timeout:1500,polling:'raf'});
       const zoomMid=await page.evaluate(()=>BaselineApp.map.getZoom());
       assert(zoomMid>zoomSmoothStart+.05 && zoomMid<zoomSmoothStart+.25,
         'small pinch must produce a non-snapped incremental change');
@@ -1107,6 +1113,8 @@ const server = http.createServer((req, res) => {
         {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+115,clientY:drawBox.y+310});
       await page.locator('#drawingCapture').dispatchEvent('pointerup',
         {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+265,clientY:drawBox.y+310});
+      await page.waitForFunction(mid=>BaselineApp.map.getZoom()>mid+.10,
+        zoomMid,{timeout:1500,polling:'raf'});
       const zoomSmoothEnd=await page.evaluate(()=>BaselineApp.map.getZoom());
       assert(zoomSmoothEnd>zoomMid+.10,'continuous pinch should progress smoothly with finger movement');
       assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.length),1,
