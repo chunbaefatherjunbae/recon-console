@@ -1316,7 +1316,9 @@ const server = http.createServer((req, res) => {
       await page.waitForTimeout(25);
       assert.equal(await page.evaluate(() => BaselineRecordStore.getActive()?.track?.points?.length), trackCountAtPause, 'paused GPS fixes must not append track points');
 
-      await page.reload();
+      // External map-tile streams need not finish for the local session to be
+      // hydrated. Waiting for full load can stall on WebKit despite DOM readiness.
+      await page.reload({waitUntil:'domcontentloaded',timeout:30000});
       await page.waitForFunction(() => window.BaselineApp?.version === 'R0.1-BASELINE');
       assert.equal(await page.evaluate(() => BaselineRecordStore.getActive()?.status), 'PAUSED');
       assert.equal(await page.locator('#navRouteSummary').isVisible(), true);
