@@ -131,7 +131,10 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--text-main').trim()), '#22ff66');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--accent').trim()), '#9de3a4');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--text-dim').trim()), '#4f9a63');
-      assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--map-filter').includes('hue-rotate(76deg)')), true);
+      assert.equal(await page.evaluate(() => {
+        const filter=getComputedStyle(document.body).getPropertyValue('--map-filter');
+        return filter.includes('hue-rotate(72deg)') && filter.includes('brightness(56%)');
+      }),true,'NVG-G map treatment must match the optical-equipment theme');
       assert.equal(await page.evaluate(() => getComputedStyle(document.body, '::after').opacity), '0.18');
       await page.waitForTimeout(120);
       const topoTileFilter = await page.locator('.leaflet-tile:not(.road-boost-tiles)').first().evaluate(el => getComputedStyle(el).filter).catch(() => '');
@@ -928,6 +931,45 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('.route-start-marker').count(), 1);
       assert.equal(await page.locator('.route-end-marker').count(), 1);
       assert.equal(await page.locator('[data-nav-action="CLOSE"]').count(), 1);
+      // Optical equipment: only one visible objective, one distance/GRID/MAG
+      // trio, and detailed current/start readings behind an explicit toggle.
+      assert.equal(await page.locator('#navSummaryRow').isVisible(),true);
+      assert.match(await page.locator('#navRouteText').textContent(),/^계획 · /);
+      assert.equal(await page.locator('#navTargetName').isHidden(),true,
+        'objective should not appear twice in the compact HUD');
+      assert.equal(await page.locator('#navInstrumentDetails').isHidden(),true,
+        'detailed reference measurements start collapsed');
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
+      assert.equal(await page.locator('#navFitRouteBtn').isEnabled(),true);
+      await page.locator('#navMetricsToggle').click();
+      assert.equal(await page.locator('#navInstrumentDetails').isVisible(),true);
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'true');
+      assert.equal(await page.locator('.nav-bearing-gauge').first().isVisible(),true);
+      await page.locator('#navMetricsToggle').click();
+      assert.equal(await page.locator('#navInstrumentDetails').isHidden(),true);
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
+
+      const draftBeforeFit=await page.evaluate(()=>JSON.stringify(BaselineNavigationUI.getDraft()));
+      await page.locator('#navFitRouteBtn').click();
+      const routeFit=await page.evaluate(()=>{
+        const plan=BaselineNavigationUI.getDraft();
+        const bounds=BaselineApp.map.getBounds();
+        const nodes=[
+          ...(plan.start?[plan.start.coords]:[]),
+          ...plan.vias.map(v=>v.coords),
+          ...(plan.destination?[plan.destination.coords]:[])
+        ];
+        return {
+          visible:nodes.every(coords=>bounds.contains(coords)),
+          plan:JSON.stringify(plan),
+          markerStyle:getComputedStyle(document.querySelector('.site-map-marker-wrap')).display,
+          navControls:document.querySelector('#navSessionControls').hidden
+        };
+      });
+      assert.equal(routeFit.visible,true,'fit-route must show all planned nodes');
+      assert.equal(routeFit.plan,draftBeforeFit,'fit-route must not alter saved or active route');
+      assert.equal(routeFit.markerStyle,'none','fit-route must retain plan site-marker policy');
+      assert.equal(routeFit.navControls,false,'fit-route must preserve session controls');
       await page.screenshot({ path:`ui-results-baseline/${name}-navigation-ready.png`, fullPage:true });
 
       // Verify all four viewport families while PLAN is active. A rotation
@@ -944,15 +986,18 @@ const server = http.createServer((req, res) => {
         await page.setViewportSize({width:spec.width,height:spec.height});
         await page.waitForTimeout(110);
         await page.evaluate(() => BaselineApp.map.invalidateSize({animate:false}));
-        const responsive=await page.evaluate(() => {
+        const responsive=await page.evaluate(previousCenter => {
           const r=id=>document.getElementById(id).getBoundingClientRect();
           const pos=r('positionHud'),nav=r('navigationHud'),
             summary=r('navRouteSummary'),quick=r('tempBtn'),controls=r('navSessionControls'),
             ret=document.querySelector('.reticle').getBoundingClientRect(),mapBox=r('map');
           const all=[...document.querySelectorAll('.quick-btn')].map(x=>x.getBoundingClientRect());
           const columns=new Set(all.map(x=>Math.round(x.left))).size;
-          const c=BaselineApp.map.getCenter();
+          const map=BaselineApp.map;
+          const c=map.getCenter();
+          const centerDriftPx=map.project(previousCenter).distanceTo(map.project(c));
           return {
+            centerDriftPx,zoom:map.getZoom(),
             pos:{right:pos.right,bottom:pos.bottom},
             nav:{right:nav.right,bottom:nav.bottom,top:nav.top},
             summary:{top:summary.top},
@@ -964,7 +1009,7 @@ const server = http.createServer((req, res) => {
             lat:c.lat,lon:c.lng,
             lastMetric:getComputedStyle(document.getElementById('navGridBearing')).fontSize
           };
-        });
+        }, originalCenter);
         assert.equal(responsive.columns,spec.columns,spec.label+' quick controls layout');
         assert(responsive.pos.right<spec.width-30,spec.label+' POS telemetry must fit');
         assert(responsive.nav.right<responsive.quick.left-6,spec.label+' HUD must clear quick controls');
@@ -973,9 +1018,18 @@ const server = http.createServer((req, res) => {
         assert(Math.abs(responsive.retCenter[0]-responsive.mapCenter[0])<=1 &&
           Math.abs(responsive.retCenter[1]-responsive.mapCenter[1])<=1,
           spec.label+' reticle must stay at map center');
-        assert(Math.abs(responsive.lat-originalCenter[0])<0.00005 &&
-          Math.abs(responsive.lon-originalCenter[1])<0.00005,
-          spec.label+' resizing must preserve reference geographic center');
+        // At a route-fit zoom (often < 10), sub-pixel center rounding can
+        // exceed a fixed 0.00005-degree threshold. Measure true map-pixel
+        // displacement across rotation; retain strict geographical precision
+        // separately for navigation-scale zoom levels.
+        assert(responsive.centerDriftPx<=1.1,
+          spec.label+' resizing must preserve center within 1px at zoom '+responsive.zoom+
+          ' (drift '+responsive.centerDriftPx.toFixed(3)+'px)');
+        if(responsive.zoom>=14){
+          assert(Math.abs(responsive.lat-originalCenter[0])<0.00005 &&
+            Math.abs(responsive.lon-originalCenter[1])<0.00005,
+            spec.label+' high-zoom geographic center must remain precise');
+        }
         assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDraft()?.destination!=null),true);
         await page.screenshot({path:`ui-results-baseline/${name}-instrument-${spec.label}.png`,fullPage:true});
         if(spec.label==='tablet-landscape'){
@@ -1041,7 +1095,13 @@ const server = http.createServer((req, res) => {
         {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+124,clientY:drawBox.y+310});
       await page.locator('#drawingCapture').dispatchEvent('pointermove',
         {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+256,clientY:drawBox.y+310});
-      await page.waitForTimeout(50);
+      // RAFs can be delayed in WebKit while low-zoom route tiles settle.
+      // Wait for an actual intermediate fractional frame, rather than
+      // assuming the browser renders it within exactly 50 milliseconds.
+      await page.waitForFunction(base=>{
+        const delta=BaselineApp.map.getZoom()-base;
+        return delta>.05 && delta<.25;
+      },zoomSmoothStart,{timeout:1500,polling:'raf'});
       const zoomMid=await page.evaluate(()=>BaselineApp.map.getZoom());
       assert(zoomMid>zoomSmoothStart+.05 && zoomMid<zoomSmoothStart+.25,
         'small pinch must produce a non-snapped incremental change');
@@ -1053,6 +1113,8 @@ const server = http.createServer((req, res) => {
         {pointerId:23,pointerType:'touch',isPrimary:true,clientX:drawBox.x+115,clientY:drawBox.y+310});
       await page.locator('#drawingCapture').dispatchEvent('pointerup',
         {pointerId:24,pointerType:'touch',isPrimary:false,clientX:drawBox.x+265,clientY:drawBox.y+310});
+      await page.waitForFunction(mid=>BaselineApp.map.getZoom()>mid+.10,
+        zoomMid,{timeout:1500,polling:'raf'});
       const zoomSmoothEnd=await page.evaluate(()=>BaselineApp.map.getZoom());
       assert(zoomSmoothEnd>zoomMid+.10,'continuous pinch should progress smoothly with finger movement');
       assert.equal(await page.evaluate(()=>BaselineNavigationUI.getDraft().drawings.length),1,

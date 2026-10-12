@@ -32,6 +32,7 @@
 
   let draft = null;
   let planViewActive = false;
+  let instrumentDetailsExpanded = false;
   let drawingMode = false;
   // Tool controls the gesture; style controls the saved line appearance.
   let drawTool = 'FREE';
@@ -247,6 +248,42 @@
     renderSavedDrawings();
   }
 
+  // The plan remains the source of truth; fitting a route only moves the map.
+  // It does not change saved coordinates, GPS, tracks or the navigation session.
+  function fitPlanRoute() {
+    if (!draft || !planViewActive) return;
+    const nodes = [
+      ...(draft.start ? [draft.start.coords] : []),
+      ...draft.vias.map(via => via.coords),
+      ...(draft.destination ? [draft.destination.coords] : [])
+    ].filter(Core.validCoords);
+    if (!nodes.length) return toast('표시할 경로가 없음');
+    if (S.state.gps.follow) S.setFollow(false);
+    map.stop();
+    if (nodes.length === 1) {
+      map.setView(nodes[0], Math.max(12, Math.min(map.getZoom(), 15)), {animate:false});
+    } else {
+      map.fitBounds(L.latLngBounds(nodes), {
+        paddingTopLeft:[44,90],
+        paddingBottomRight:[44,100],
+        maxZoom:15,
+        animate:false
+      });
+    }
+    toast('전체 경로 표시');
+  }
+
+  function syncInstrumentDetails() {
+    const details = $('navInstrumentDetails');
+    const button = $('navMetricsToggle');
+    if (!details || !button) return;
+    details.hidden = !instrumentDetailsExpanded;
+    $('navigationHud')?.classList.toggle('details-open',instrumentDetailsExpanded);
+    button.setAttribute('aria-expanded',String(instrumentDetailsExpanded));
+    const chevron = button.querySelector('.nav-toggle-chevron');
+    if (chevron) chevron.textContent = instrumentDetailsExpanded ? '⌃' : '⌄';
+  }
+
   function metricText(bundle) {
     if (!bundle) return '--';
     const dist = bundle.distanceKm < 1
@@ -273,14 +310,26 @@
     const visible=Boolean(draft && planViewActive);
     document.body.classList.toggle('baseline-navigation-active',visible);
     if (!visible) {
+      instrumentDetailsExpanded = false;
+      $('navSummaryRow').hidden = true;
       if (summary) summary.hidden = true;
       if (hud) hud.hidden = true;
       if (controls) controls.hidden = true;
+      syncInstrumentDetails();
       return;
     }
 
+    // Plan and NAV both have a single actionable target heading.
+    // The full route name is available to assistive technology and in the editor.
+    const navigating=Boolean(sessionState());
+    const activeTarget=draft.destination
+      ? (navigating ? nextTarget() : draft.destination) : null;
+    $('navSummaryRow').hidden = false;
     summary.hidden = false;
-    $('navRouteText').textContent = routeLabel();
+    $('navRouteText').textContent =
+      (navigating ? '항법 · ' : '계획 · ') + pointShort(activeTarget,'목적지 선택');
+    summary.setAttribute('aria-label', '경로 편집 · ' + routeLabel());
+    $('navFitRouteBtn').disabled = !draft.destination;
 
     if (!draft.destination) {
       hud.hidden = true;
@@ -289,10 +338,9 @@
     }
 
     hud.hidden = false;
-    const navigating=Boolean(sessionState());
+    syncInstrumentDetails();
     // Planning observes the final objective. An active route first presents
     // its first VIA if present; never label the final destination as "next".
-    const activeTarget=navigating ? nextTarget() : draft.destination;
     const coords=activeTarget?.coords;
     const viaIndex=navigating && draft.vias.length && activeTarget===draft.vias[0] ? 1 : 0;
     const ref = S.reference();
@@ -1577,6 +1625,12 @@
   });
   $('drawDoneBtn')?.addEventListener('click',exitDrawing);
   $('navRouteSummary')?.addEventListener('click',openEditor);
+  $('navFitRouteBtn')?.addEventListener('click',fitPlanRoute);
+  $('navMetricsToggle')?.addEventListener('click',() => {
+    if (!draft || !planViewActive || !draft.destination) return;
+    instrumentDetailsExpanded = !instrumentDetailsExpanded;
+    syncInstrumentDetails();
+  });
 
   window.addEventListener('baseline-state-change',event => {
     if (event.detail?.reason === 'gps-fix') {
