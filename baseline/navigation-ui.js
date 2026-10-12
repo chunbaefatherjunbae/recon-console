@@ -278,6 +278,7 @@
     const button = $('navMetricsToggle');
     if (!details || !button) return;
     details.hidden = !instrumentDetailsExpanded;
+    $('navigationHud')?.classList.toggle('details-open',instrumentDetailsExpanded);
     button.setAttribute('aria-expanded',String(instrumentDetailsExpanded));
     const chevron = button.querySelector('.nav-toggle-chevron');
     if (chevron) chevron.textContent = instrumentDetailsExpanded ? '⌃' : '⌄';
