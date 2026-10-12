@@ -3,12 +3,12 @@ name: Deploy RECON CONSOLE BASELINE
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: recon-console-pages
@@ -36,8 +36,13 @@ jobs:
       - name: Run Chromium and WebKit regression
         run: node scripts/test-baseline-browser.cjs
   deploy:
+    if: github.event_name != 'pull_request'
     needs: verify
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
