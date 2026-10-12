@@ -1,6 +1,6 @@
 'use strict';
 
-const SHELL_CACHE='recon-console-baseline-shell-v16';
+const SHELL_CACHE='recon-console-baseline-shell-v17';
 const TERRAIN_CACHE='recon-console-baseline-terrain-v1';
 const ONLINE_TILE_CACHE='recon-console-baseline-online-tiles-v1';
 const ONLINE_TILE_LIMIT=384;
@@ -17,6 +17,7 @@ const SHELL=[
   '../icons/icon-192.png',
   '../icons/icon-512.png',
   './styles.css',
+  './equipment-ui.css',
   './state.js',
   './site-store.js',
   './explore-core.js',
