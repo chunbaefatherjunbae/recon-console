@@ -400,9 +400,9 @@
       L.polyline(segment.map(p => [p.lat,p.lon]),{
         interactive:false,
         className:'baseline-track-path',
-        color:'#22ff66',
-        weight:2.5,
-        opacity:.92
+        color:'#8bdda5',
+        weight:2.2,
+        opacity:.83
       }).addTo(trackLayer);
     });
   }
