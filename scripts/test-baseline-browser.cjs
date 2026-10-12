@@ -928,6 +928,45 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('.route-start-marker').count(), 1);
       assert.equal(await page.locator('.route-end-marker').count(), 1);
       assert.equal(await page.locator('[data-nav-action="CLOSE"]').count(), 1);
+      // Optical equipment: only one visible objective, one distance/GRID/MAG
+      // trio, and detailed current/start readings behind an explicit toggle.
+      assert.equal(await page.locator('#navSummaryRow').isVisible(),true);
+      assert.match(await page.locator('#navRouteText').textContent(),/^계획 · /);
+      assert.equal(await page.locator('#navTargetName').isHidden(),true,
+        'objective should not appear twice in the compact HUD');
+      assert.equal(await page.locator('#navInstrumentDetails').isHidden(),true,
+        'detailed reference measurements start collapsed');
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
+      assert.equal(await page.locator('#navFitRouteBtn').isEnabled(),true);
+      await page.locator('#navMetricsToggle').click();
+      assert.equal(await page.locator('#navInstrumentDetails').isVisible(),true);
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'true');
+      assert.equal(await page.locator('.nav-bearing-gauge').first().isVisible(),true);
+      await page.locator('#navMetricsToggle').click();
+      assert.equal(await page.locator('#navInstrumentDetails').isHidden(),true);
+      assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
+
+      const draftBeforeFit=await page.evaluate(()=>JSON.stringify(BaselineNavigationUI.getDraft()));
+      await page.locator('#navFitRouteBtn').click();
+      const routeFit=await page.evaluate(()=>{
+        const plan=BaselineNavigationUI.getDraft();
+        const bounds=BaselineApp.map.getBounds();
+        const nodes=[
+          ...(plan.start?[plan.start.coords]:[]),
+          ...plan.vias.map(v=>v.coords),
+          ...(plan.destination?[plan.destination.coords]:[])
+        ];
+        return {
+          visible:nodes.every(coords=>bounds.contains(coords)),
+          plan:JSON.stringify(plan),
+          markerStyle:getComputedStyle(document.querySelector('.site-map-marker-wrap')).display,
+          navControls:document.querySelector('#navSessionControls').hidden
+        };
+      });
+      assert.equal(routeFit.visible,true,'fit-route must show all planned nodes');
+      assert.equal(routeFit.plan,draftBeforeFit,'fit-route must not alter saved or active route');
+      assert.equal(routeFit.markerStyle,'none','fit-route must retain plan site-marker policy');
+      assert.equal(routeFit.navControls,false,'fit-route must preserve session controls');
       await page.screenshot({ path:`ui-results-baseline/${name}-navigation-ready.png`, fullPage:true });
 
       // Verify all four viewport families while PLAN is active. A rotation
