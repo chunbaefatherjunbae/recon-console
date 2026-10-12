@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 const required=['index.html','baseline/index.html','baseline/manifest.json','baseline/sw.js',
-  'baseline/app.js','baseline/styles.css','baseline/data/lite-map-osm.js',
+  'baseline/app.js','baseline/styles.css','baseline/equipment-ui.css','baseline/data/lite-map-osm.js',
   'vendor/leaflet-1.9.4.css','vendor/leaflet-1.9.4.js','vendor/mgrs-1.0.0.js',
   'icons/icon-192.png','icons/icon-512.png'];
 for(const file of required) assert(fs.existsSync(path.join(root,file)), 'Missing file: '+file);
