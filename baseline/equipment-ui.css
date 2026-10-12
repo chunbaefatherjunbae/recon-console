@@ -129,6 +129,7 @@ body.baseline-navigation-active .navigation-hud {
   pointer-events:none;
   text-shadow:var(--optic-map-text-shadow);
 }
+body.baseline-navigation-active .navigation-hud[hidden] {display:none!important;}
 body.baseline-navigation-active .navigation-hud::before {
   opacity:.43;
   background:var(--optic-caption);
@@ -288,7 +289,10 @@ body.baseline-navigation-active .bottom-nav button.active {color:var(--optic-cap
   }
   body.baseline-navigation-active .navigation-hud .nav-distance-line strong{font-size:20px;}
   body.baseline-navigation-active .navigation-hud .nav-angle-line strong{font-size:17px;}
-  body.baseline-navigation-active .navigation-hud .nav-instrument-secondary{display:none;}
+  body.baseline-navigation-active .navigation-hud .nav-instrument-secondary span{
+    font-size:10px;
+    line-height:1.2;
+  }
   body.baseline-navigation-active .navigation-hud .nav-metrics-toggle{min-height:38px;}
 }
 @media (max-width:599px) and (max-height:520px) {
