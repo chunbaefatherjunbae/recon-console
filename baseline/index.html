@@ -60,9 +60,14 @@
       </button>
     </nav>
 
-    <button class="nav-route-summary" id="navRouteSummary" type="button" hidden aria-label="항법 경로 수정">
-      <span id="navRouteText">출발 → 목적지</span><b>⌄</b>
-    </button>
+    <div class="nav-summary-row" id="navSummaryRow" hidden>
+      <button class="nav-route-summary" id="navRouteSummary" type="button" hidden aria-label="계획 경로 수정">
+        <span id="navRouteText">계획 · 목적지</span><b aria-hidden="true">⌄</b>
+      </button>
+      <button class="nav-fit-route" id="navFitRouteBtn" type="button" aria-label="전체 경로 지도에 맞추기" title="전체 경로 보기" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
 
     <section class="navigation-hud" id="navigationHud" hidden aria-live="polite" aria-label="계획 및 항법 계측 정보">
       <div class="nav-instrument-header">
@@ -103,13 +108,16 @@
           </div>
         </div>
       </div>
-      <div class="nav-instrument-secondary">
+      <div class="nav-instrument-secondary" id="navInstrumentDetails" hidden>
         <span id="navNowMetric">--</span>
         <span id="navStartMetric">--</span>
       </div>
       <div class="nav-instrument-footer">
         <span class="navigation-hud-sub" id="navDeclination">도자각 --</span>
         <span class="navigation-timer" id="navTimer" hidden>00:00:00</span>
+        <button class="nav-metrics-toggle" id="navMetricsToggle" type="button" aria-expanded="false" aria-controls="navInstrumentDetails">
+          <span>상세 계측</span><span class="nav-toggle-chevron" aria-hidden="true">⌄</span>
+        </button>
       </div>
     </section>
 
