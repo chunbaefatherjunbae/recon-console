@@ -1319,7 +1319,21 @@
     $('layerBtn')?.classList.toggle('active',panel === 'layers');
   }
 
+  // Release iOS text-editing focus before a sheet is hidden or its inputs are
+  // replaced. The old TACTICAL RECON closed search panes this way as well.
+  // This reduces lingering native text-edit sessions; web code cannot disable
+  // the system-wide Shake to Undo dialog.
+  function releaseSheetTextFocus() {
+    const active=document.activeElement;
+    const sheet=$('sheet');
+    if (active && sheet?.contains(active) &&
+        active.matches?.('input,textarea,select,[contenteditable="true"]')) {
+      active.blur();
+    }
+  }
+
   function openSheet(panel, custom) {
+    releaseSheetTextFocus();
     if (S.state.activePanel === 'map-point' && panel !== 'map-point') clearSelectedMapPoint();
     if (sitePlacementActive) {
       sitePlacementActive = false;
@@ -1340,6 +1354,7 @@
   }
 
   function closeSheet() {
+    releaseSheetTextFocus();
     if (S.state.activePanel === 'explore') clearExploreCircle();
     if (S.state.activePanel === 'map-point') clearSelectedMapPoint();
     document.body.classList.remove('baseline-site-selected');
