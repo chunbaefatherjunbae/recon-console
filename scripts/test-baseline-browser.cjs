@@ -841,8 +841,12 @@ const server = http.createServer((req, res) => {
 
       await page.locator('#planEditorSave').click();
       assert.equal(await page.evaluate(() => BaselinePlanStore.list().length), 1);
+      // Native iOS editing sessions should end before PLAN closes.
+      await page.locator('#planNameInput').focus();
       await page.locator('#planEditorConfirm').click();
       assert.equal(await page.locator('#sheet').isHidden(), true);
+      assert.equal(await page.evaluate(()=>document.activeElement?.id==='planNameInput'),false,
+        'plan confirmation must not leave the name editor focused');
       assert.equal(await page.locator('#navRouteSummary').isVisible(), true);
       assert.equal(await page.locator('#navigationHud').isVisible(), true);
       assert.equal(await page.locator('.reticle').evaluate(el=>getComputedStyle(el).opacity),'1',
@@ -940,7 +944,31 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#navInstrumentDetails').isHidden(),true,
         'detailed reference measurements start collapsed');
       assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
-      assert.equal(await page.locator('#navFitRouteBtn').isEnabled(),true);
+      assert.equal(await page.locator('#navFitRouteBtn').count(),0,
+        'no separate route-fit button may obscure the map');
+      const compactOptics=await page.evaluate(()=>{
+        const box=id=>document.getElementById(id).getBoundingClientRect();
+        const dist=box('navDistanceValue'),grid=box('navGridBearing'),mag=box('navMagBearing');
+        const detailsButton=getComputedStyle(document.getElementById('navMetricsToggle'));
+        return {
+          dist:{x:dist.x,y:dist.y},grid:{x:grid.x,y:grid.y},mag:{x:mag.x,y:mag.y},
+          fields:getComputedStyle(document.querySelector('.nav-instrument-main')).gridTemplateColumns.split(' ').map(Number),
+          gutter:getComputedStyle(document.querySelector('.nav-angle-pair')).display,
+          toggle:{background:detailsButton.backgroundColor,border:detailsButton.borderTopStyle,
+            width:parseFloat(detailsButton.width),height:parseFloat(detailsButton.height)}
+        };
+      });
+      assert(compactOptics.dist.x<compactOptics.grid.x && compactOptics.grid.x<compactOptics.mag.x,
+        'DIST GRID MAG must be three independent visual columns');
+      assert(Math.abs(compactOptics.dist.y-compactOptics.grid.y)<=2 &&
+        Math.abs(compactOptics.grid.y-compactOptics.mag.y)<=2,
+        'three telemetry values must align on the same baseline');
+      assert.equal(compactOptics.gutter,'contents','bearing pair should not form a nested layout');
+      assert.equal(compactOptics.toggle.background,'rgba(0, 0, 0, 0)',
+        'details disclosure should not look like an opaque button');
+      assert.equal(compactOptics.toggle.border,'none');
+      assert(compactOptics.toggle.width>=44 && compactOptics.toggle.height>=44,
+        'invisible equipment disclosure still needs a 44px touch target');
       await page.locator('#navMetricsToggle').click();
       assert.equal(await page.locator('#navInstrumentDetails').isVisible(),true);
       assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'true');
@@ -950,7 +978,15 @@ const server = http.createServer((req, res) => {
       assert.equal(await page.locator('#navMetricsToggle').getAttribute('aria-expanded'),'false');
 
       const draftBeforeFit=await page.evaluate(()=>JSON.stringify(BaselineNavigationUI.getDraft()));
-      await page.locator('#navFitRouteBtn').click();
+      await page.locator('#navRouteSummary').click();
+      assert.equal(await page.locator('#planEditorFit').isEnabled(),true,
+        'whole route must remain reachable through the existing plan editor');
+      await page.locator('#planNameInput').focus();
+      await page.locator('#planEditorFit').click();
+      assert.equal(await page.locator('#sheet').isHidden(),true,
+        'map-fit must close the editor so the full route can be inspected');
+      assert.equal(await page.evaluate(()=>document.activeElement?.id==='planNameInput'),false,
+        'map-fit must release the native text-editing focus');
       const routeFit=await page.evaluate(()=>{
         const plan=BaselineNavigationUI.getDraft();
         const bounds=BaselineApp.map.getBounds();
@@ -1386,6 +1422,30 @@ const server = http.createServer((req, res) => {
       await page.locator('#searchBtn').click();
       assert.equal(await page.locator('#sheetTitle').textContent(), '검색');
       assert(await page.locator('#baselineSearchInput').isVisible());
+      await page.locator('#baselineSearchInput').focus();
+      await page.evaluate(()=>{
+        window.__searchBlurCount=0;
+        document.getElementById('baselineSearchInput')
+          .addEventListener('blur',()=>window.__searchBlurCount++);
+      });
+      await page.locator('#sheetClose').click();
+      assert.equal(await page.evaluate(()=>window.__searchBlurCount),1,
+        'closing a search sheet must blur the input before hiding the pane');
+
+      // Also cover replacing an active text pane through the central sheet API.
+      await page.locator('#searchBtn').click();
+      await page.locator('#baselineSearchInput').focus();
+      await page.evaluate(()=>{
+        window.__replaceBlurCount=0;
+        document.getElementById('baselineSearchInput')
+          .addEventListener('blur',()=>window.__replaceBlurCount++);
+        BaselineApp.openSheet('settings',{
+          title:'설정',
+          html:'<p class="sheet-note">포커스 전환 확인</p>'
+        });
+      });
+      assert.equal(await page.evaluate(()=>window.__replaceBlurCount),1,
+        'replacing sheet content must end the previous native edit session');
       await page.locator('#sheetClose').click();
 
       await page.locator('#layerBtn').click();

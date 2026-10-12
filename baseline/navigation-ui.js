@@ -280,6 +280,7 @@
     details.hidden = !instrumentDetailsExpanded;
     $('navigationHud')?.classList.toggle('details-open',instrumentDetailsExpanded);
     button.setAttribute('aria-expanded',String(instrumentDetailsExpanded));
+    button.setAttribute('aria-label', instrumentDetailsExpanded ? '상세 계측 접기' : '상세 계측 펼치기');
     const chevron = button.querySelector('.nav-toggle-chevron');
     if (chevron) chevron.textContent = instrumentDetailsExpanded ? '⌃' : '⌄';
   }
@@ -329,7 +330,6 @@
     $('navRouteText').textContent =
       (navigating ? '항법 · ' : '계획 · ') + pointShort(activeTarget,'목적지 선택');
     summary.setAttribute('aria-label', '경로 편집 · ' + routeLabel());
-    $('navFitRouteBtn').disabled = !draft.destination;
 
     if (!draft.destination) {
       hud.hidden = true;
@@ -353,7 +353,7 @@
     $('navModeLabel').textContent = navigating
       ? (viaIndex ? 'NAV / 경유지 01' : 'NAV / 목적지') : 'PLAN / TARGET';
     $('navTargetName').textContent=pointShort(activeTarget,'목적지');
-    $('navDistanceLabel').textContent=navigating?'잔여 직선 거리 · DIST':'직선 거리 · DIST';
+    $('navDistanceLabel').textContent=navigating?'잔여 · DIST':'거리 · DIST';
     const km=nowBundle?.distanceKm;
     $('navDistanceValue').textContent=Number.isFinite(km)
       ? (km<1?String(Math.round(km*1000)):km.toFixed(km<10?2:1)) : '--';
@@ -400,9 +400,9 @@
       L.polyline(segment.map(p => [p.lat,p.lon]),{
         interactive:false,
         className:'baseline-track-path',
-        color:'#22ff66',
-        weight:2.5,
-        opacity:.92
+        color:'#8bdda5',
+        weight:2.2,
+        opacity:.83
       }).addTo(trackLayer);
     });
   }
@@ -508,6 +508,7 @@
       '<label class="plan-name"><span>계획 이름</span><input id="planNameInput" type="text" maxlength="120" value="' + esc(draft?.name || '') + '" placeholder="계획 이름"></label>' +
       '<div class="plan-route-stack">' + pointRowsHtml() + '</div>' +
       '<div class="plan-editor-actions">' +
+        '<button type="button" id="planEditorFit" ' + (draft?.destination ? '' : 'disabled') + '>전체 경로 보기</button>' +
         '<button type="button" id="planEditorSave">저장</button>' +
         '<button type="button" id="planEditorConfirm" class="primary">확인</button>' +
       '</div>' +
@@ -560,7 +561,16 @@
       });
     });
 
-    $('planEditorSave')?.addEventListener('click',() => saveCurrent(false));
+    $('planEditorFit')?.addEventListener('click',() => {
+      if(!draft?.destination) return;
+      dismissTextEditing();
+      fitPlanRoute();
+      App.closeSheet();
+    });
+    $('planEditorSave')?.addEventListener('click',() => {
+      dismissTextEditing();
+      saveCurrent(false);
+    });
     $('planEditorConfirm')?.addEventListener('click',() => {
       if ($('planNameInput')) draft.name = $('planNameInput').value.trim();
       if (!draft.start) draft.start=referencePoint('START');
@@ -1509,6 +1519,7 @@
 
   function enterDrawing() {
     if(!draft)return;
+    dismissTextEditing();
     drawingMode=true;
     originalZoomSnap=map.options.zoomSnap;
     // Fractional zoom is continuous for the entire two-finger drawing gesture.
@@ -1625,7 +1636,6 @@
   });
   $('drawDoneBtn')?.addEventListener('click',exitDrawing);
   $('navRouteSummary')?.addEventListener('click',openEditor);
-  $('navFitRouteBtn')?.addEventListener('click',fitPlanRoute);
   $('navMetricsToggle')?.addEventListener('click',() => {
     if (!draft || !planViewActive || !draft.destination) return;
     instrumentDetailsExpanded = !instrumentDetailsExpanded;
